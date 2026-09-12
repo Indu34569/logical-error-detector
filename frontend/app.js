@@ -26,13 +26,16 @@ async function analyzeCode() {
     `;
 
     try {
-        const response = await fetch("https://logical-error-detector-backend.onrender.com/analyze", {
-            method: "POST",
-            headers: {
-                "Content-Type": "text/plain"
-            },
-            body: code
-        });
+        const response = await fetch(
+            "https://logical-error-detector-backend.onrender.com/analyze",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "text/plain"
+                },
+                body: code
+            }
+        );
 
         const result = await response.text();
 
@@ -40,11 +43,17 @@ async function analyzeCode() {
             throw new Error(result);
         }
 
-        const hasErrors =
+        /*
+         * Check for both logical errors and syntax errors.
+         */
+        const hasLogicalErrors =
             result.includes("Logical errors detected") ||
             result.includes("Logical Error Detected!");
 
-        if (hasErrors) {
+        const hasSyntaxErrors =
+            result.includes("Syntax errors detected!");
+
+        if (hasLogicalErrors || hasSyntaxErrors) {
             displayErrorResult(result);
         } else {
             displaySuccessResult(result);
@@ -83,23 +92,33 @@ function displayErrorResult(result) {
 
     const errors = extractErrors(result);
 
+    const hasSyntaxErrors =
+        result.includes("Syntax errors detected!");
+
+    const hasLogicalErrors =
+        result.includes("Logical errors detected") ||
+        result.includes("Logical Error Detected!");
+
     let errorCards = "";
 
     if (errors.length > 0) {
 
         errorCards = `
             <div class="detected-errors">
+
                 <h2>Detected Logical Errors</h2>
 
                 ${errors.map((error, index) => `
                     <div class="detected-error-card">
 
                         <div class="error-title">
+
                             <span class="error-badge">
                                 ERROR ${index + 1}
                             </span>
 
                             <h3>${escapeHtml(error.type)}</h3>
+
                         </div>
 
                         <p>
@@ -129,6 +148,46 @@ function displayErrorResult(result) {
         `;
     }
 
+
+    /*
+     * Decide what status message to display.
+     */
+    let resultTitle = "Logical Errors Detected";
+    let resultDescription =
+        "The analyzer found logical problems in the Java program.";
+
+    if (hasSyntaxErrors && !hasLogicalErrors) {
+
+        resultTitle = "Syntax Errors Detected";
+
+        resultDescription =
+            "The analyzer found syntax problems in the Java program.";
+
+    } else if (hasSyntaxErrors && hasLogicalErrors) {
+
+        resultTitle = "Syntax and Logical Errors Detected";
+
+        resultDescription =
+            "The analyzer found syntax and logical problems in the Java program.";
+    }
+
+
+    /*
+     * Syntax status.
+     */
+    let syntaxStatus = "No Syntax Errors";
+
+    if (hasSyntaxErrors) {
+        syntaxStatus = "Syntax Errors Found";
+    }
+
+
+    /*
+     * Logical error count.
+     */
+    let logicalErrorCount = errors.length;
+
+
     resultBox.innerHTML = `
 
         <div class="result-header error-header">
@@ -136,9 +195,10 @@ function displayErrorResult(result) {
             <span>✗</span>
 
             <div>
-                <h2>Logical Errors Detected</h2>
+                <h2>${resultTitle}</h2>
+
                 <p>
-                    The analyzer found logical problems in the Java program.
+                    ${resultDescription}
                 </p>
             </div>
 
@@ -153,7 +213,16 @@ function displayErrorResult(result) {
 
                 <div>
                     <span>Status</span>
-                    <strong>Logical Errors Found</strong>
+
+                    <strong>
+                        ${
+                            hasSyntaxErrors && !hasLogicalErrors
+                            ? "Syntax Errors Found"
+                            : hasSyntaxErrors && hasLogicalErrors
+                            ? "Multiple Errors Found"
+                            : "Logical Errors Found"
+                        }
+                    </strong>
                 </div>
 
             </div>
@@ -165,7 +234,10 @@ function displayErrorResult(result) {
 
                 <div>
                     <span>Total Errors</span>
-                    <strong>${errors.length}</strong>
+
+                    <strong>
+                        ${logicalErrorCount}
+                    </strong>
                 </div>
 
             </div>
@@ -173,16 +245,19 @@ function displayErrorResult(result) {
 
             <div class="summary-card">
 
-                <div class="summary-icon">✓</div>
+                <div class="summary-icon">
+                    ${
+                        hasSyntaxErrors
+                        ? "✗"
+                        : "✓"
+                    }
+                </div>
 
                 <div>
                     <span>Syntax</span>
+
                     <strong>
-                        ${
-                            result.includes("No syntax errors found")
-                            ? "No Syntax Errors"
-                            : "Check Report"
-                        }
+                        ${syntaxStatus}
                     </strong>
                 </div>
 
@@ -240,7 +315,10 @@ function displaySuccessResult(result) {
 
                 <div>
                     <span>Status</span>
-                    <strong>No Logical Errors</strong>
+
+                    <strong>
+                        No Logical Errors
+                    </strong>
                 </div>
 
             </div>
@@ -252,7 +330,10 @@ function displaySuccessResult(result) {
 
                 <div>
                     <span>Errors</span>
-                    <strong>0 Logical Errors</strong>
+
+                    <strong>
+                        0 Logical Errors
+                    </strong>
                 </div>
 
             </div>
@@ -264,7 +345,10 @@ function displaySuccessResult(result) {
 
                 <div>
                     <span>Syntax</span>
-                    <strong>No Syntax Errors</strong>
+
+                    <strong>
+                        No Syntax Errors
+                    </strong>
                 </div>
 
             </div>
@@ -286,7 +370,7 @@ function displaySuccessResult(result) {
 
 
 /* =====================================================
-   EXTRACT ERROR INFORMATION FROM JAVA REPORT
+   EXTRACT ERROR INFORMATION
    ===================================================== */
 
 function extractErrors(result) {
@@ -303,14 +387,9 @@ function extractErrors(result) {
         const line = lines[i].trim();
 
 
-        /* ---------------------------------------------
-           Find line number
-           Example:
-           Condition at line 5: x < 5
-           WHILE at line 7: b < 5
-           IF at line 5: x < 5
-           --------------------------------------------- */
-
+        /*
+         * Find line number and condition.
+         */
         const lineMatch = line.match(
             /(?:Condition|IF|WHILE|FOR|DO-WHILE)\s+at\s+line\s+(\d+):\s*(.*)/i
         );
@@ -319,22 +398,26 @@ function extractErrors(result) {
             /(?:WHILE|FOR|DO-WHILE)\s+at\s+line\s+(\d+):\s*(.*)/i
         );
 
+
         if (lineMatch) {
+
             currentLine = lineMatch[1];
+
             currentCondition = lineMatch[2];
         }
 
 
         if (loopMatch) {
+
             currentLine = loopMatch[1];
+
             currentCondition = loopMatch[2];
         }
 
 
-        /* ---------------------------------------------
-           Find error type
-           --------------------------------------------- */
-
+        /*
+         * Find error type.
+         */
         if (line.startsWith("Error Type:")) {
 
             const errorType =
@@ -342,9 +425,11 @@ function extractErrors(result) {
 
             let description = "";
 
+
             for (let j = i + 1; j < lines.length; j++) {
 
                 const nextLine = lines[j].trim();
+
 
                 if (
                     nextLine.startsWith("Error Type:") ||
@@ -361,6 +446,7 @@ function extractErrors(result) {
                     break;
                 }
 
+
                 if (nextLine.length > 0) {
 
                     if (description.length > 0) {
@@ -373,23 +459,27 @@ function extractErrors(result) {
 
 
             errors.push({
+
                 line: currentLine || "Unknown",
+
                 type: errorType,
+
                 condition: currentCondition || "",
+
                 description: description
+
             });
         }
     }
 
 
     /*
-     * Remove duplicate errors with the same
-     * line + type + condition.
+     * Remove duplicate errors.
      */
-
     const uniqueErrors = [];
 
     const seen = new Set();
+
 
     for (const error of errors) {
 
@@ -400,6 +490,7 @@ function extractErrors(result) {
             "|" +
             error.condition;
 
+
         if (!seen.has(key)) {
 
             seen.add(key);
@@ -407,6 +498,7 @@ function extractErrors(result) {
             uniqueErrors.push(error);
         }
     }
+
 
     return uniqueErrors;
 }
