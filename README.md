@@ -1,264 +1,73 @@
-# Static Analysis Tool to Detect Logical Errors in Procedural Programs
+# Static Analysis Tool for Detecting Logical Errors in Java Programs
 
-## 📌 Project Overview
+A Java-based static analysis tool that analyzes source code and detects selected logical errors using program analysis, constraint generation, and the Z3 SMT solver.
 
-The **Static Analysis Tool to Detect Logical Errors in Procedural Programs** is a Java-based static analysis project developed to identify common logical errors in source code without executing the program.
+## Project Overview
 
-The tool analyzes a Java program, builds constraints from program conditions, and uses the **Z3 SMT Solver** to determine whether conditions are satisfiable, contradictory, or unreachable.
+The tool accepts Java source code through a web-based interface and analyzes the program to identify logical errors.
 
-## 🎯 Objectives
+The system provides:
 
-* Analyze Java source code using static analysis techniques.
-* Detect conditions that can never be true.
-* Identify unreachable branches and loops.
-* Detect contradictory or unsatisfiable conditions.
-* Use program-order data-flow information to track known variable values.
-* Use Z3 to perform constraint-based logical reasoning.
-* Provide a clear analysis report to the user.
+- Java code input through a web interface
+- JavaParser-based source code analysis
+- Variable and condition analysis
+- Constraint generation
+- Z3-based logical verification
+- Error detection with line numbers
+- Multiple error reporting
+- Web-based analysis results
 
-## 🔍 Logical Errors Detected
+## Analysis Pipeline
 
-The current implementation can detect examples such as:
+Java Code Input  
+↓  
+JavaParser – AST Generation  
+↓  
+Data Flow – Variable Analysis  
+↓  
+Constraints – Constraint Generation  
+↓  
+Z3 Solver – Logical Verification  
+↓  
+Report – Error Detection
 
-### 1. Impossible Equality
+## Technologies Used
 
-```java
-int k = 0;
+- Java 17
+- Maven
+- JavaParser
+- Z3 SMT Solver
+- Java HTTP Server
+- HTML
+- CSS
+- JavaScript
+- GitHub
+- GitHub Pages
+- Render
 
-if (k == 5) {
-    System.out.println("k is 5");
-}
-```
+## Live Demo
 
-The condition can never be true because `k` is known to be `0`.
+https://indu34569.github.io/logical-error-detector/
 
-### 2. Unreachable FOR Loop
+## Backend
 
-```java
-int j = 10;
+https://logical-error-detector-backend.onrender.com/
 
-for (j = 10; j < 5; j++) {
-    System.out.println("This loop cannot execute");
-}
-```
+## Source Code
 
-The loop condition is false before the first iteration.
+https://github.com/Indu34569/logical-error-detector
 
-### 3. Infinite WHILE Loop
+## Example
 
-```java
-while (true) {
-    System.out.println("This loop never ends");
-}
-```
-
-The condition is always true and no `break` statement is present.
-
-### 4. Contradictory Compound Condition
-
-```java
-int x = 5;
-
-if (x > 10 && x < 3) {
-    System.out.println("This condition is impossible");
-}
-```
-
-Both conditions cannot be satisfied simultaneously.
-
-### 5. Unreachable WHILE Loop
+### Input
 
 ```java
-int b = 10;
+public class TestProgram {
+    public static void main(String[] args) {
+        int age = 20;
 
-while (b < 5) {
-    System.out.println("This loop cannot execute");
+        if (age < 10) {
+            System.out.println("Child");
+        }
+    }
 }
-```
-
-The loop condition is false with the known value of `b`.
-
-### 6. Valid Condition
-
-```java
-int x = 5;
-
-if (x < 10) {
-    System.out.println("Condition is valid");
-}
-```
-
-This condition is satisfiable, so no logical error is reported.
-
-## 🏗️ Project Architecture
-
-```text
-Java Source Program
-        ↓
-JavaParser
-        ↓
-Syntax Analysis
-        ↓
-Program-Order Data-Flow Analysis
-        ↓
-Condition Analysis
-        ↓
-Constraint Generation
-        ↓
-Z3 SMT Solver
-        ↓
-Logical Error Detection
-        ↓
-Final Analysis Report
-```
-
-## 🛠️ Technologies Used
-
-* **Java 17**
-* **JavaParser**
-* **Z3 SMT Solver**
-* **Apache Maven**
-* **Git / GitHub**
-
-All tools and libraries used in this project are free to use.
-
-## 📂 Project Structure
-
-```text
-logical-error-detector/
-│
-├── pom.xml
-├── .gitignore
-│
-├── src/
-│   └── main/
-│       └── java/
-│           └── com/
-│               └── project/
-│                   └── analyzer/
-│                       ├── ConditionAnalyzer.java
-│                       ├── ConstraintGenerator.java
-│                       ├── LogicalErrorDetector.java
-│                       └── Z3ConstraintAnalyzer.java
-│
-└── test-input/
-    ├── TestProgram.java
-    └── tests/
-        ├── TestImpossibleEquality.java
-        ├── TestUnreachableFor.java
-        ├── TestInfiniteLoop.java
-        ├── TestContradictoryCondition.java
-        ├── TestValidCondition.java
-        └── TestUnreachableWhile.java
-```
-
-## ▶️ How to Build
-
-Make sure Java 17 and Maven are installed.
-
-Clone the repository:
-
-```bash
-git clone https://github.com/Indu34569/logical-error-detector.git
-```
-
-Enter the project directory:
-
-```bash
-cd logical-error-detector
-```
-
-Compile the project:
-
-```bash
-mvn clean compile
-```
-
-## ▶️ Running the Analyzer
-
-The analyzer can be run using the compiled classes together with the required JavaParser and Z3 dependencies.
-
-The input Java source file is configured in:
-
-```text
-src/main/java/com/project/analyzer/LogicalErrorDetector.java
-```
-
-The tool produces a structured report containing:
-
-* Syntax analysis
-* Data-flow information
-* Condition analysis
-* Branch analysis
-* Loop analysis
-* Logical error detection
-* Final error count
-
-## 🧪 Testing
-
-The project contains multiple test programs covering different logical situations, including:
-
-* Impossible conditions
-* Unreachable branches
-* Unreachable loops
-* Infinite loops
-* Contradictory compound conditions
-* Valid conditions
-
-These test programs are located in:
-
-```text
-test-input/tests/
-```
-
-## 📊 Example Result
-
-For a contradictory condition such as:
-
-```java
-int x = 5;
-
-if (x > 10 && x < 3) {
-    System.out.println("Impossible");
-}
-```
-
-the analyzer reports that the condition is **UNSATISFIABLE** and identifies the corresponding logical error.
-
-For a valid condition such as:
-
-```java
-int x = 5;
-
-if (x < 10) {
-    System.out.println("Condition is valid");
-}
-```
-
-the analyzer reports:
-
-```text
-✓ No logical errors detected.
-```
-
-## 🚀 Future Enhancements
-
-Possible future improvements include:
-
-* Detecting additional logical error patterns.
-* Improving data-flow analysis.
-* Supporting more complex expressions.
-* Improving handling of variable assignments.
-* Adding more loop and branch analysis.
-* Improving the user interface and analysis report.
-* Expanding automated test coverage.
-
-## 👩‍💻 Project
-
-**Project:** Static Analysis Tool to Detect Logical Errors in Procedural Programs
-
-**Repository:** `logical-error-detector`
-
-**Platform:** Java / Maven
-
-**Purpose:** Academic / Final-Year Project
