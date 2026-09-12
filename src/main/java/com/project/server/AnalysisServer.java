@@ -18,7 +18,10 @@ import java.util.concurrent.Executors;
 
 public class AnalysisServer {
 
-    private static final int PORT = 8080;
+    private static final int PORT =
+        Integer.parseInt(
+                System.getenv().getOrDefault("PORT", "8080")
+        );
 
     private static final Path INPUT_FILE =
             Path.of("test-input/tests/WebInput.java");
@@ -26,10 +29,10 @@ public class AnalysisServer {
     public static void main(String[] args) throws Exception {
 
         HttpServer server =
-                HttpServer.create(
-                        new InetSocketAddress(PORT),
-                        0
-                );
+        HttpServer.create(
+                new InetSocketAddress("0.0.0.0", PORT),
+                0
+        );
 
         server.createContext(
                 "/analyze",
@@ -47,7 +50,7 @@ public class AnalysisServer {
         System.out.println("========================================");
         System.out.println();
         System.out.println(
-                "Server running at: http://localhost:" + PORT
+                "Server running on port:" + PORT
         );
         System.out.println();
         System.out.println(
