@@ -26,7 +26,7 @@ async function analyzeCode() {
     `;
 
     try {
-        const response = await fetch("http://localhost:8080/analyze", {
+        const response = await fetch("https://logical-error-detector-backend.onrender.com/analyze", {
             method: "POST",
             headers: {
                 "Content-Type": "text/plain"
