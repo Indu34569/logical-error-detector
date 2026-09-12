@@ -43,9 +43,6 @@ async function analyzeCode() {
             throw new Error(result);
         }
 
-        /*
-         * Check for both logical errors and syntax errors.
-         */
         const hasLogicalErrors =
             result.includes("Logical errors detected") ||
             result.includes("Logical Error Detected!");
@@ -67,7 +64,7 @@ async function analyzeCode() {
                     <span>⚠</span>
                     <div>
                         <h2>Backend Not Connected</h2>
-                        <p>Start the Java analysis server and try again.</p>
+                        <p>There was a problem connecting to the analysis server.</p>
                     </div>
                 </div>
 
@@ -99,6 +96,98 @@ function displayErrorResult(result) {
         result.includes("Logical errors detected") ||
         result.includes("Logical Error Detected!");
 
+    /*
+     * Count syntax errors separately.
+     *
+     * JavaParser normally reports syntax errors in a section
+     * beginning with "Syntax errors detected!".
+     */
+    let syntaxErrorCount = 0;
+
+    if (hasSyntaxErrors) {
+
+        const syntaxSection =
+            result.substring(
+                result.indexOf("Syntax errors detected!")
+            );
+
+        /*
+         * Count JavaParser error lines.
+         * Typical format:
+         * line 3:...
+         */
+        const syntaxMatches =
+            syntaxSection.match(/(?:line\s+\d+|Line\s+\d+)/g);
+
+        if (syntaxMatches && syntaxMatches.length > 0) {
+            syntaxErrorCount = syntaxMatches.length;
+        } else {
+            /*
+             * If the exact JavaParser format is different,
+             * still count at least one syntax error.
+             */
+            syntaxErrorCount = 1;
+        }
+    }
+
+    /*
+     * Total errors = logical errors + syntax errors.
+     */
+    const totalErrorCount =
+        errors.length + syntaxErrorCount;
+
+
+    /*
+     * Decide the main result heading.
+     */
+    let resultTitle = "Logical Errors Detected";
+
+    let resultDescription =
+        "The analyzer found logical problems in the Java program.";
+
+    if (hasSyntaxErrors && !hasLogicalErrors) {
+
+        resultTitle = "Syntax Errors Detected";
+
+        resultDescription =
+            "The analyzer found syntax problems in the Java program.";
+
+    } else if (hasSyntaxErrors && hasLogicalErrors) {
+
+        resultTitle = "Syntax and Logical Errors Detected";
+
+        resultDescription =
+            "The analyzer found syntax and logical problems in the Java program.";
+    }
+
+
+    /*
+     * Decide the status text.
+     */
+    let statusText = "Logical Errors Found";
+
+    if (hasSyntaxErrors && !hasLogicalErrors) {
+
+        statusText = "Syntax Errors Found";
+
+    } else if (hasSyntaxErrors && hasLogicalErrors) {
+
+        statusText = "Multiple Errors Found";
+    }
+
+
+    /*
+     * Syntax status.
+     */
+    const syntaxStatus =
+        hasSyntaxErrors
+        ? "Syntax Errors Found"
+        : "No Syntax Errors";
+
+
+    /*
+     * Logical error cards.
+     */
     let errorCards = "";
 
     if (errors.length > 0) {
@@ -106,7 +195,13 @@ function displayErrorResult(result) {
         errorCards = `
             <div class="detected-errors">
 
-                <h2>Detected Logical Errors</h2>
+                <h2>
+                    ${
+                        hasSyntaxErrors && hasLogicalErrors
+                        ? "Detected Logical Errors"
+                        : "Detected Logical Errors"
+                    }
+                </h2>
 
                 ${errors.map((error, index) => `
                     <div class="detected-error-card">
@@ -117,18 +212,26 @@ function displayErrorResult(result) {
                                 ERROR ${index + 1}
                             </span>
 
-                            <h3>${escapeHtml(error.type)}</h3>
+                            <h3>
+                                ${escapeHtml(error.type)}
+                            </h3>
 
                         </div>
 
                         <p>
-                            📍 <strong>Line ${error.line}</strong> —
-                            Error found at this line.
+                            📍 <strong>Line ${escapeHtml(String(error.line))}</strong>
+                            — Error found at this line.
                         </p>
 
-                        <p>
-                            ${escapeHtml(error.description)}
-                        </p>
+                        ${
+                            error.description
+                            ? `
+                                <p>
+                                    ${escapeHtml(error.description)}
+                                </p>
+                            `
+                            : ""
+                        }
 
                         ${
                             error.condition
@@ -150,42 +253,50 @@ function displayErrorResult(result) {
 
 
     /*
-     * Decide what status message to display.
+     * Syntax error card.
+     *
+     * Syntax errors are not returned through the normal
+     * "Error Type:" logical-error format, so display them
+     * separately.
      */
-    let resultTitle = "Logical Errors Detected";
-    let resultDescription =
-        "The analyzer found logical problems in the Java program.";
-
-    if (hasSyntaxErrors && !hasLogicalErrors) {
-
-        resultTitle = "Syntax Errors Detected";
-
-        resultDescription =
-            "The analyzer found syntax problems in the Java program.";
-
-    } else if (hasSyntaxErrors && hasLogicalErrors) {
-
-        resultTitle = "Syntax and Logical Errors Detected";
-
-        resultDescription =
-            "The analyzer found syntax and logical problems in the Java program.";
-    }
-
-
-    /*
-     * Syntax status.
-     */
-    let syntaxStatus = "No Syntax Errors";
+    let syntaxCards = "";
 
     if (hasSyntaxErrors) {
-        syntaxStatus = "Syntax Errors Found";
+
+        syntaxCards = `
+            <div class="detected-errors">
+
+                <h2>Detected Syntax Errors</h2>
+
+                <div class="detected-error-card">
+
+                    <div class="error-title">
+
+                        <span class="error-badge">
+                            SYNTAX
+                        </span>
+
+                        <h3>
+                            Java Syntax Error
+                        </h3>
+
+                    </div>
+
+                    <p>
+                        The JavaParser could not parse the program because
+                        the Java source contains a syntax error.
+                    </p>
+
+                    <p>
+                        Check the technical report below for the
+                        exact parser message and line number.
+                    </p>
+
+                </div>
+
+            </div>
+        `;
     }
-
-
-    /*
-     * Logical error count.
-     */
-    let logicalErrorCount = errors.length;
 
 
     resultBox.innerHTML = `
@@ -195,11 +306,15 @@ function displayErrorResult(result) {
             <span>✗</span>
 
             <div>
-                <h2>${resultTitle}</h2>
+
+                <h2>
+                    ${resultTitle}
+                </h2>
 
                 <p>
                     ${resultDescription}
                 </p>
+
             </div>
 
         </div>
@@ -209,35 +324,18 @@ function displayErrorResult(result) {
 
             <div class="summary-card">
 
-                <div class="summary-icon">✗</div>
+                <div class="summary-icon">
+                    ✗
+                </div>
 
                 <div>
+
                     <span>Status</span>
 
                     <strong>
-                        ${
-                            hasSyntaxErrors && !hasLogicalErrors
-                            ? "Syntax Errors Found"
-                            : hasSyntaxErrors && hasLogicalErrors
-                            ? "Multiple Errors Found"
-                            : "Logical Errors Found"
-                        }
+                        ${statusText}
                     </strong>
-                </div>
 
-            </div>
-
-
-            <div class="summary-card">
-
-                <div class="summary-icon">#</div>
-
-                <div>
-                    <span>Total Errors</span>
-
-                    <strong>
-                        ${logicalErrorCount}
-                    </strong>
                 </div>
 
             </div>
@@ -246,25 +344,44 @@ function displayErrorResult(result) {
             <div class="summary-card">
 
                 <div class="summary-icon">
-                    ${
-                        hasSyntaxErrors
-                        ? "✗"
-                        : "✓"
-                    }
+                    #
                 </div>
 
                 <div>
+
+                    <span>Total Errors</span>
+
+                    <strong>
+                        ${totalErrorCount}
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <div class="summary-card">
+
+                <div class="summary-icon">
+                    ${hasSyntaxErrors ? "✗" : "✓"}
+                </div>
+
+                <div>
+
                     <span>Syntax</span>
 
                     <strong>
                         ${syntaxStatus}
                     </strong>
+
                 </div>
 
             </div>
 
         </div>
 
+
+        ${syntaxCards}
 
         ${errorCards}
 
@@ -297,11 +414,15 @@ function displaySuccessResult(result) {
             <span>✓</span>
 
             <div>
-                <h2>Analysis Completed</h2>
+
+                <h2>
+                    Analysis Completed
+                </h2>
 
                 <p>
-                    No logical errors were detected.
+                    No syntax or logical errors were detected.
                 </p>
+
             </div>
 
         </div>
@@ -311,14 +432,18 @@ function displaySuccessResult(result) {
 
             <div class="summary-card">
 
-                <div class="summary-icon">✓</div>
+                <div class="summary-icon">
+                    ✓
+                </div>
 
                 <div>
+
                     <span>Status</span>
 
                     <strong>
-                        No Logical Errors
+                        No Errors Found
                     </strong>
+
                 </div>
 
             </div>
@@ -326,14 +451,18 @@ function displaySuccessResult(result) {
 
             <div class="summary-card">
 
-                <div class="summary-icon">0</div>
+                <div class="summary-icon">
+                    0
+                </div>
 
                 <div>
+
                     <span>Errors</span>
 
                     <strong>
-                        0 Logical Errors
+                        0 Errors
                     </strong>
+
                 </div>
 
             </div>
@@ -341,14 +470,18 @@ function displaySuccessResult(result) {
 
             <div class="summary-card">
 
-                <div class="summary-icon">✓</div>
+                <div class="summary-icon">
+                    ✓
+                </div>
 
                 <div>
+
                     <span>Syntax</span>
 
                     <strong>
                         No Syntax Errors
                     </strong>
+
                 </div>
 
             </div>
@@ -370,7 +503,7 @@ function displaySuccessResult(result) {
 
 
 /* =====================================================
-   EXTRACT ERROR INFORMATION
+   EXTRACT LOGICAL ERROR INFORMATION
    ===================================================== */
 
 function extractErrors(result) {
@@ -380,7 +513,9 @@ function extractErrors(result) {
     const lines = result.split("\n");
 
     let currentLine = null;
+
     let currentCondition = null;
+
 
     for (let i = 0; i < lines.length; i++) {
 
@@ -389,13 +524,17 @@ function extractErrors(result) {
 
         /*
          * Find line number and condition.
+         *
+         * Examples:
+         *
+         * Condition at line 5: x < 5
+         * IF at line 5: x < 5
+         * WHILE at line 7: b < 5
+         * FOR at line 10: i < 5
+         * DO-WHILE at line 15: x > 0
          */
         const lineMatch = line.match(
             /(?:Condition|IF|WHILE|FOR|DO-WHILE)\s+at\s+line\s+(\d+):\s*(.*)/i
-        );
-
-        const loopMatch = line.match(
-            /(?:WHILE|FOR|DO-WHILE)\s+at\s+line\s+(\d+):\s*(.*)/i
         );
 
 
@@ -407,16 +546,8 @@ function extractErrors(result) {
         }
 
 
-        if (loopMatch) {
-
-            currentLine = loopMatch[1];
-
-            currentCondition = loopMatch[2];
-        }
-
-
         /*
-         * Find error type.
+         * Find logical error type.
          */
         if (line.startsWith("Error Type:")) {
 
@@ -426,6 +557,9 @@ function extractErrors(result) {
             let description = "";
 
 
+            /*
+             * Collect description lines.
+             */
             for (let j = i + 1; j < lines.length; j++) {
 
                 const nextLine = lines[j].trim();
@@ -474,7 +608,7 @@ function extractErrors(result) {
 
 
     /*
-     * Remove duplicate errors.
+     * Remove duplicate logical errors.
      */
     const uniqueErrors = [];
 
@@ -516,9 +650,13 @@ function clearCode() {
 
         <div class="empty-result">
 
-            <div class="empty-icon">🔍</div>
+            <div class="empty-icon">
+                🔍
+            </div>
 
-            <h3>Ready for Analysis</h3>
+            <h3>
+                Ready for Analysis
+            </h3>
 
             <p>
                 Enter Java code above and click
