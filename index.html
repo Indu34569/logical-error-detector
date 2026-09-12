@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Static Analysis Tool</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<header>
+    <div class="header-content">
+        <h1>Static Analysis Tool</h1>
+        <p>Detect Syntax and Logical Errors in Java Programs</p>
+    </div>
+</header>
+
+<main>
+
+    <section class="card">
+
+        <div class="section-title">
+            <div>
+                <h2>Java Code Input</h2>
+                <span class="badge">JAVA</span>
+            </div>
+        </div>
+
+        <textarea
+            id="codeInput"
+            spellcheck="false"
+            placeholder="Paste your Java program here..."
+>public class TestProgram {
+
+    public static void main(String[] args) {
+
+        int age = 20;
+
+        if (age &lt; 10) {
+            System.out.println("Child");
+        }
+    }
+}</textarea>
+
+        <div class="button-row">
+            <button id="analyzeButton" onclick="analyzeCode()">
+                Analyze Code
+            </button>
+
+            <button class="clear-button" onclick="clearCode()">
+                Clear
+            </button>
+        </div>
+
+    </section>
+
+
+    <section class="card">
+
+        <div class="section-title">
+            <div>
+                <h2>Analysis Results</h2>
+                <span class="badge">REPORT</span>
+            </div>
+        </div>
+
+        <div id="resultBox" class="result-box">
+            <div class="empty-result">
+                <div class="empty-icon">🔍</div>
+                <h3>Ready for Analysis</h3>
+                <p>Enter Java code above and click <b>Analyze Code</b>.</p>
+            </div>
+        </div>
+
+    </section>
+
+
+    <section class="card">
+
+        <h2>Analysis Pipeline</h2>
+
+        <div class="pipeline">
+
+            <div class="pipeline-step">
+                <div class="step-number">1</div>
+                <h3>JavaParser</h3>
+                <p>AST Generation</p>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="pipeline-step">
+                <div class="step-number">2</div>
+                <h3>Data Flow</h3>
+                <p>Variable Analysis</p>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="pipeline-step">
+                <div class="step-number">3</div>
+                <h3>Constraints</h3>
+                <p>Constraint Generation</p>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="pipeline-step">
+                <div class="step-number">4</div>
+                <h3>Z3 Solver</h3>
+                <p>Logical Verification</p>
+            </div>
+
+            <div class="arrow">→</div>
+
+            <div class="pipeline-step">
+                <div class="step-number">5</div>
+                <h3>Report</h3>
+                <p>Error Detection</p>
+            </div>
+
+        </div>
+
+    </section>
+
+</main>
+
+<footer>
+    <p>Static Analysis Tool | Logical Error Detection Project</p>
+</footer>
+
+<script src="app.js"></script>
+
+</body>
+</html>
