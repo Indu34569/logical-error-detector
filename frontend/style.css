@@ -1,0 +1,669 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    background: #f4f7fb;
+    color: #1f2937;
+    min-height: 100vh;
+}
+
+header {
+    background: #111827;
+    color: white;
+    padding: 30px 40px;
+    text-align: center;
+}
+
+header h1 {
+    font-size: 30px;
+    margin-bottom: 8px;
+}
+
+header p {
+    color: #cbd5e1;
+}
+
+main {
+    width: min(1150px, 94%);
+    margin: 35px auto;
+}
+
+section {
+    background: white;
+    border-radius: 14px;
+    padding: 28px;
+    margin-bottom: 28px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.07);
+}
+
+/* SECTION HEADING */
+
+.section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 18px;
+}
+
+.section-heading h2 {
+    margin-bottom: 5px;
+}
+
+.section-heading p {
+    color: #64748b;
+    font-size: 14px;
+}
+
+.language-badge,
+.report-badge {
+    padding: 7px 12px;
+    border-radius: 6px;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+/* =====================================================
+   LARGE JAVA CODE INPUT
+   ===================================================== */
+
+.editor-wrapper {
+    display: flex;
+    width: 100%;
+    height: 750px;
+    min-height: 750px;
+    overflow: hidden;
+    border-radius: 10px;
+    background: #0f172a;
+    border: 1px solid #334155;
+}
+
+/* LINE NUMBERS */
+
+.line-numbers {
+    width: 55px;
+    min-width: 55px;
+    height: 100%;
+    flex-shrink: 0;
+
+    padding: 18px 10px;
+
+    overflow: hidden;
+    text-align: right;
+
+    background: #172033;
+    color: #64748b;
+
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 14px;
+    line-height: 1.6;
+
+    user-select: none;
+}
+
+/* JAVA TEXT INPUT */
+
+.editor-wrapper textarea {
+    display: block;
+
+    flex: 1;
+    width: calc(100% - 55px);
+    height: 100%;
+    min-height: 100%;
+
+    resize: none;
+
+    border: none;
+    outline: none;
+
+    padding: 18px;
+
+    background: #0f172a;
+    color: #e2e8f0;
+
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 14px;
+    line-height: 1.6;
+
+    white-space: pre;
+    overflow: auto;
+
+    tab-size: 4;
+}
+
+.editor-wrapper textarea:focus {
+    outline: none;
+}
+
+.editor-wrapper textarea::placeholder {
+    color: #64748b;
+}
+
+/* EDITOR INFORMATION */
+
+.editor-info {
+    display: flex;
+    justify-content: space-between;
+
+    margin-top: 8px;
+
+    color: #64748b;
+    font-size: 12px;
+}
+
+/* =====================================================
+   BUTTONS
+   ===================================================== */
+
+.button-container {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+button {
+    border: none;
+    border-radius: 8px;
+
+    padding: 12px 22px;
+
+    font-size: 15px;
+    font-weight: 600;
+
+    cursor: pointer;
+}
+
+#analyzeButton {
+    background: #2563eb;
+    color: white;
+}
+
+#analyzeButton:hover {
+    background: #1d4ed8;
+}
+
+#analyzeButton:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+button[onclick="clearCode()"] {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+button[onclick="clearCode()"]:hover {
+    background: #d1d5db;
+}
+
+/* =====================================================
+   ANALYSIS RESULTS
+   ===================================================== */
+
+#resultBox {
+    width: 100%;
+}
+
+.empty-result,
+.loading-result {
+    text-align: center;
+
+    padding: 55px 20px;
+
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+}
+
+.empty-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+}
+
+.empty-result h3,
+.loading-result h3 {
+    margin-bottom: 8px;
+}
+
+.empty-result p,
+.loading-result p {
+    color: #64748b;
+}
+
+/* RESULT HEADER */
+
+.result-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+
+    padding: 20px;
+
+    border-radius: 12px;
+    margin-bottom: 22px;
+}
+
+.result-header > span {
+    font-size: 32px;
+    font-weight: bold;
+}
+
+.result-header h2 {
+    margin: 0 0 5px;
+}
+
+.result-header p {
+    color: #64748b;
+}
+
+.error-header {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+}
+
+.error-header > span {
+    color: #dc2626;
+}
+
+.success-header {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+}
+
+.success-header > span {
+    color: #16a34a;
+}
+
+/* =====================================================
+   SUMMARY BOXES
+   ===================================================== */
+
+.analysis-summary {
+    display: grid;
+
+    grid-template-columns: repeat(3, 1fr);
+
+    gap: 16px;
+
+    margin-bottom: 28px;
+}
+
+.summary-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+
+    min-height: 90px;
+
+    padding: 18px;
+
+    background: #f8fafc;
+
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+}
+
+.summary-icon {
+    width: 42px;
+    height: 42px;
+
+    flex-shrink: 0;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 50%;
+
+    background: #e2e8f0;
+
+    font-size: 20px;
+    font-weight: bold;
+}
+
+.summary-card span {
+    display: block;
+
+    color: #64748b;
+
+    font-size: 13px;
+
+    margin-bottom: 5px;
+}
+
+.summary-card strong {
+    display: block;
+
+    font-size: 15px;
+}
+
+/* =====================================================
+   DETECTED ERRORS
+   ===================================================== */
+
+.detected-errors {
+    margin-top: 10px;
+}
+
+.detected-errors > h2 {
+    margin-bottom: 16px;
+}
+
+.detected-error-card {
+    width: 100%;
+
+    padding: 22px;
+
+    margin-bottom: 16px;
+
+    background: #ffffff;
+
+    border: 2px solid #fecaca;
+
+    border-left: 6px solid #dc2626;
+
+    border-radius: 12px;
+
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
+}
+
+.error-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    margin-bottom: 14px;
+}
+
+.error-title h3 {
+    color: #991b1b;
+    font-size: 17px;
+}
+
+.error-badge {
+    padding: 5px 9px;
+
+    border-radius: 5px;
+
+    background: #dc2626;
+    color: white;
+
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.detected-error-card p {
+    color: #4b5563;
+
+    line-height: 1.6;
+
+    margin-top: 8px;
+}
+
+/* LINE NUMBER */
+
+.detected-error-card p:first-of-type {
+    background: #fef2f2;
+
+    border: 1px solid #fecaca;
+
+    border-radius: 7px;
+
+    padding: 9px 12px;
+
+    color: #991b1b;
+}
+
+.detected-error-card code {
+    display: inline-block;
+
+    padding: 4px 8px;
+
+    margin-left: 4px;
+
+    background: #fee2e2;
+
+    color: #991b1b;
+
+    border-radius: 5px;
+
+    font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+/* =====================================================
+   TECHNICAL REPORT
+   ===================================================== */
+
+.technical-report {
+    margin-top: 25px;
+
+    border: 1px solid #cbd5e1;
+
+    border-radius: 10px;
+
+    overflow: hidden;
+}
+
+.technical-report summary {
+    padding: 16px 18px;
+
+    background: #f8fafc;
+
+    cursor: pointer;
+
+    font-weight: 600;
+}
+
+.technical-report summary:hover {
+    background: #f1f5f9;
+}
+
+.technical-report pre {
+    margin: 0;
+
+    padding: 20px;
+
+    background: #0f172a;
+    color: #e2e8f0;
+
+    overflow: auto;
+
+    max-height: 600px;
+
+    white-space: pre;
+
+    font-family: "SFMono-Regular", Consolas, monospace;
+
+    font-size: 13px;
+
+    line-height: 1.6;
+}
+
+/* =====================================================
+   ANALYSIS PIPELINE
+   ===================================================== */
+
+.pipeline {
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    gap: 10px;
+}
+
+.pipeline-step {
+    flex: 1;
+
+    min-height: 125px;
+
+    padding: 18px 10px;
+
+    text-align: center;
+
+    border: 1px solid #cbd5e1;
+
+    border-radius: 10px;
+
+    background: #f8fafc;
+}
+
+.step-number {
+    width: 35px;
+    height: 35px;
+
+    margin: 0 auto 10px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 50%;
+
+    background: #2563eb;
+
+    color: white;
+
+    font-weight: bold;
+}
+
+.pipeline-step h3 {
+    font-size: 15px;
+
+    margin-bottom: 6px;
+}
+
+.pipeline-step p {
+    color: #64748b;
+
+    font-size: 12px;
+}
+
+.arrow {
+    font-size: 22px;
+
+    color: #64748b;
+
+    flex-shrink: 0;
+}
+
+/* =====================================================
+   FOOTER
+   ===================================================== */
+
+footer {
+    text-align: center;
+
+    padding: 25px;
+
+    color: #64748b;
+
+    font-size: 13px;
+}
+
+/* =====================================================
+   TABLET / MOBILE
+   ===================================================== */
+
+@media (max-width: 800px) {
+
+    header {
+        padding: 24px 18px;
+    }
+
+    header h1 {
+        font-size: 24px;
+    }
+
+    main {
+        width: 94%;
+        margin: 20px auto;
+    }
+
+    section {
+        padding: 20px;
+    }
+
+    .section-heading {
+        align-items: flex-start;
+    }
+
+    .analysis-summary {
+        grid-template-columns: 1fr;
+    }
+
+    /* Smaller but still large on mobile */
+
+    .editor-wrapper {
+        height: 550px;
+        min-height: 550px;
+    }
+
+    .editor-wrapper textarea {
+        min-height: 100%;
+    }
+
+    .pipeline {
+        flex-direction: column;
+    }
+
+    .pipeline-step {
+        width: 100%;
+    }
+
+    .arrow {
+        transform: rotate(90deg);
+    }
+
+    .button-container {
+        flex-direction: column;
+    }
+
+    button {
+        width: 100%;
+    }
+
+    .detected-error-card {
+        padding: 18px;
+    }
+
+    .error-title {
+        align-items: flex-start;
+
+        flex-direction: column;
+
+        gap: 8px;
+    }
+}
+/* FINAL JAVA INPUT SIZE FIX */
+
+#codeInput {
+    display: block !important;
+    width: 100% !important;
+    height: 750px !important;
+    min-height: 750px !important;
+    max-height: none !important;
+
+    resize: vertical !important;
+    overflow: auto !important;
+
+    padding: 20px !important;
+
+    background: #0f172a !important;
+    color: #e2e8f0 !important;
+
+    border: 1px solid #334155 !important;
+    border-radius: 10px !important;
+
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+
+    white-space: pre !important;
+    tab-size: 4 !important;
+}
