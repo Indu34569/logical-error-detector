@@ -1,133 +1,190 @@
+/* =========================================================
+   JAVA CODE ANALYSIS
+   ========================================================= */
+
 async function analyzeCode() {
-    const code = document.getElementById("codeInput").value;
-    const resultBox = document.getElementById("resultBox");
-    const button = document.getElementById("analyzeButton");
+
+    const code =
+        document.getElementById("codeInput").value;
+
+    const resultBox =
+        document.getElementById("resultBox");
+
+    const button =
+        document.getElementById("analyzeButton");
+
+
+    /* -----------------------------------------------------
+       CHECK EMPTY INPUT
+       ----------------------------------------------------- */
 
     if (!code.trim()) {
+
         resultBox.innerHTML = `
             <div class="empty-result">
+
                 <div class="empty-icon">⚠</div>
+
                 <h3>Please enter Java code</h3>
-                <p>Paste a Java program into the code editor.</p>
+
+                <p>
+                    Paste a Java program into the code editor.
+                </p>
+
             </div>
         `;
+
         return;
     }
+
+
+    /* -----------------------------------------------------
+       LOADING STATE
+       ----------------------------------------------------- */
 
     button.disabled = true;
     button.textContent = "Analyzing...";
 
+
     resultBox.innerHTML = `
         <div class="loading-result">
+
             <div class="empty-icon">🔍</div>
+
             <h3>Analyzing Program...</h3>
-            <p>JavaParser → Data Flow → Constraints → Z3 → Error Detection</p>
+
+            <p>
+                JavaParser → Data Flow → Constraints → Z3 → Error Detection
+            </p>
+
         </div>
     `;
 
-    try {
-        const response = await fetch(
-            "https://logical-error-detector-backend.onrender.com/analyze",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "text/plain"
-                },
-                body: code
-            }
-        );
 
-        const result = await response.text();
+    try {
+
+        /* -------------------------------------------------
+           SEND CODE TO BACKEND
+           ------------------------------------------------- */
+
+        const response =
+            await fetch(
+                "https://logical-error-detector-backend.onrender.com/analyze",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "text/plain"
+                    },
+
+                    body: code
+                }
+            );
+
+
+        const result =
+            await response.text();
+
 
         if (!response.ok) {
+
             throw new Error(result);
         }
 
-        /*
-         * =====================================================
-         * DETERMINE SYNTAX STATUS
-         * =====================================================
-         *
-         * IMPORTANT:
-         * Do NOT simply search for the words
-         * "syntax errors" because the backend can also say:
-         *
-         * "No syntax errors found."
-         *
-         * Instead, explicitly check whether the syntax section
-         * reports an actual error.
-         */
+
+        /* -------------------------------------------------
+           DETERMINE SYNTAX STATUS
+           ------------------------------------------------- */
 
         const syntaxSectionMatch =
             result.match(
                 /SYNTAX ANALYSIS\s*-+\s*([\s\S]*?)(?=\n\s*LOGICAL ERROR ANALYSIS)/i
             );
 
+
         const syntaxSection =
             syntaxSectionMatch
                 ? syntaxSectionMatch[1]
-                : result;
+                : "";
+
+
+        /*
+         * IMPORTANT:
+         *
+         * Only the syntax section is inspected.
+         *
+         * This prevents text inside the logical detector's
+         * technical report from being mistaken for a syntax
+         * error.
+         */
+
+        const noSyntaxErrors =
+            /No syntax errors found\./i.test(
+                syntaxSection
+            );
+
+
+        const syntaxErrors =
+            extractSyntaxErrors(
+                syntaxSection
+            );
 
 
         const hasSyntaxErrors =
-            /Syntax errors detected!/i.test(syntaxSection) ||
-            /Syntax Error Details:/i.test(syntaxSection) ||
-            /Parse error/i.test(syntaxSection);
+            !noSyntaxErrors &&
+            syntaxErrors.length > 0;
 
 
         /*
-         * Explicitly override the status when the backend
-         * confirms that there are no syntax errors.
+         * If the backend explicitly says there are syntax
+         * errors but does not provide a location, still show
+         * one generic syntax error card.
          */
 
-        const backendSaysNoSyntaxErrors =
-            /No syntax errors found\./i.test(syntaxSection);
+        const backendReportsSyntaxError =
+            /Syntax errors detected!/i.test(
+                syntaxSection
+            ) ||
+            /Syntax Error Details:/i.test(
+                syntaxSection
+            ) ||
+            /Parse error/i.test(
+                syntaxSection
+            );
 
 
         const finalSyntaxStatus =
-            backendSaysNoSyntaxErrors
-                ? false
-                : hasSyntaxErrors;
+            hasSyntaxErrors ||
+            (
+                !noSyntaxErrors &&
+                backendReportsSyntaxError
+            );
 
 
-        /*
-         * =====================================================
-         * DETERMINE LOGICAL STATUS
-         * =====================================================
-         */
-
-        const logicalDetected =
-            /Logical Error Detected!/i.test(result) ||
-            /Logical errors detected\./i.test(result) ||
-            /Error Type:/i.test(result);
-
-
-        /*
-         * =====================================================
-         * DISPLAY RESULT
-         * =====================================================
-         */
+        /* -------------------------------------------------
+           EXTRACT LOGICAL ERRORS
+           ------------------------------------------------- */
 
         const logicalErrors =
-            extractErrors(result);
+            extractLogicalErrors(
+                result
+            );
 
 
         const finalLogicalStatus =
-            logicalDetected &&
             logicalErrors.length > 0;
 
 
-        /*
-         * If the backend says logical errors exist but our
-         * structured extraction could not find them, still
-         * allow the fallback logical card.
-         */
+        /* -------------------------------------------------
+           DISPLAY
+           ------------------------------------------------- */
 
         displayCombinedResult(
             result,
             finalSyntaxStatus,
-            logicalDetected
+            finalLogicalStatus
         );
+
 
     } catch (error) {
 
@@ -139,17 +196,23 @@ async function analyzeCode() {
                     <span>⚠</span>
 
                     <div>
-                        <h2>Backend Not Connected</h2>
+
+                        <h2>
+                            Backend Not Connected
+                        </h2>
 
                         <p>
                             The analysis server could not be reached.
                         </p>
+
                     </div>
 
                 </div>
 
                 <p>
-                    <b>${escapeHtml(error.message)}</b>
+                    <b>
+                        ${escapeHtml(error.message)}
+                    </b>
                 </p>
 
             </div>
@@ -158,14 +221,16 @@ async function analyzeCode() {
     } finally {
 
         button.disabled = false;
-        button.textContent = "Analyze Code";
+
+        button.textContent =
+            "Analyze Code";
     }
 }
 
 
-/* =====================================================
+/* =========================================================
    DISPLAY COMBINED RESULT
-   ===================================================== */
+   ========================================================= */
 
 function displayCombinedResult(
     result,
@@ -178,27 +243,33 @@ function displayCombinedResult(
 
 
     const syntaxErrors =
-        extractSyntaxErrors(result);
+        extractSyntaxErrors(
+            getSyntaxSection(result)
+        );
 
 
     const logicalErrors =
-        extractErrors(result);
+        extractLogicalErrors(
+            result
+        );
 
 
     /*
-     * =================================================
+     * -----------------------------------------------------
      * COUNTS
-     * =================================================
+     * -----------------------------------------------------
      */
 
-    const syntaxCount =
-        hasSyntaxErrors
-            ? (
-                syntaxErrors.length > 0
-                    ? syntaxErrors.length
-                    : countSyntaxErrors(result)
-            )
-            : 0;
+    let syntaxCount = 0;
+
+
+    if (hasSyntaxErrors) {
+
+        syntaxCount =
+            syntaxErrors.length > 0
+                ? syntaxErrors.length
+                : 1;
+    }
 
 
     const logicalCount =
@@ -210,30 +281,39 @@ function displayCombinedResult(
 
 
     /*
-     * =================================================
-     * SUCCESS RESULT
-     * =================================================
+     * -----------------------------------------------------
+     * SUCCESS
+     * -----------------------------------------------------
      */
 
-    if (!hasSyntaxErrors && logicalCount === 0) {
+    if (
+        !hasSyntaxErrors &&
+        !hasLogicalErrors
+    ) {
 
-        displaySuccessResult(result);
+        displaySuccessResult(
+            result
+        );
 
         return;
     }
 
 
     /*
-     * =================================================
-     * STATUS
-     * =================================================
+     * -----------------------------------------------------
+     * TITLE + MESSAGE
+     * -----------------------------------------------------
      */
 
     let title = "";
+
     let message = "";
 
 
-    if (hasSyntaxErrors && logicalCount > 0) {
+    if (
+        hasSyntaxErrors &&
+        hasLogicalErrors
+    ) {
 
         title =
             "Syntax & Logical Errors Detected";
@@ -259,13 +339,11 @@ function displayCombinedResult(
     }
 
 
-    /*
-     * =================================================
-     * SYNTAX CARDS
-     * =================================================
-     */
+    /* =====================================================
+       SYNTAX SECTION
+       ===================================================== */
 
-    let syntaxSection = "";
+    let syntaxSectionHTML = "";
 
 
     if (hasSyntaxErrors) {
@@ -296,6 +374,7 @@ function displayCombinedResult(
                                     </div>
 
                                     <p>
+
                                         📍
 
                                         <strong>
@@ -309,6 +388,7 @@ function displayCombinedResult(
                                         }
 
                                         — Error found at this location.
+
                                     </p>
 
                                     <p>
@@ -348,26 +428,27 @@ function displayCombinedResult(
         }
 
 
-        syntaxSection = `
+        syntaxSectionHTML = `
 
             <div class="detected-errors">
 
-                <h2>Detected Syntax Errors</h2>
+                <h2>
+                    Detected Syntax Errors
+                </h2>
 
                 ${syntaxCards}
 
             </div>
+
         `;
     }
 
 
-    /*
-     * =================================================
-     * LOGICAL ERROR CARDS
-     * =================================================
-     */
+    /* =====================================================
+       LOGICAL SECTION
+       ===================================================== */
 
-    let logicalSection = "";
+    let logicalSectionHTML = "";
 
 
     if (hasLogicalErrors) {
@@ -398,6 +479,7 @@ function displayCombinedResult(
                                     </div>
 
                                     <p>
+
                                         📍
 
                                         <strong>
@@ -405,6 +487,7 @@ function displayCombinedResult(
                                         </strong>
 
                                         — Error found at this line.
+
                                     </p>
 
                                     <p>
@@ -415,12 +498,15 @@ function displayCombinedResult(
                                         error.condition
                                             ? `
                                                 <p>
+
                                                     Condition:
+
                                                     <code>
                                                         ${escapeHtml(
                                                             error.condition
                                                         )}
                                                     </code>
+
                                                 </p>
                                             `
                                             : ""
@@ -459,24 +545,25 @@ function displayCombinedResult(
         }
 
 
-        logicalSection = `
+        logicalSectionHTML = `
 
             <div class="detected-errors">
 
-                <h2>Detected Logical Errors</h2>
+                <h2>
+                    Detected Logical Errors
+                </h2>
 
                 ${logicalCards}
 
             </div>
+
         `;
     }
 
 
-    /*
-     * =================================================
-     * SUMMARY STATUS
-     * =================================================
-     */
+    /* =====================================================
+       STATUS TEXT
+       ===================================================== */
 
     const syntaxStatus =
         hasSyntaxErrors
@@ -485,16 +572,14 @@ function displayCombinedResult(
 
 
     const logicalStatus =
-        logicalCount > 0
-            ? "Logical Errors Found"
+        hasLogicalErrors
+            ? `${logicalCount} Logical Error${logicalCount === 1 ? "" : "s"} Found`
             : "No Logical Errors";
 
 
-    /*
-     * =================================================
-     * FINAL HTML
-     * =================================================
-     */
+    /* =====================================================
+       FINAL RESULT
+       ===================================================== */
 
     resultBox.innerHTML = `
 
@@ -519,6 +604,9 @@ function displayCombinedResult(
 
         <div class="analysis-summary">
 
+
+            <!-- TOTAL -->
+
             <div class="summary-card">
 
                 <div class="summary-icon">
@@ -527,7 +615,9 @@ function displayCombinedResult(
 
                 <div>
 
-                    <span>Status</span>
+                    <span>
+                        Status
+                    </span>
 
                     <strong>
                         ${totalErrors}
@@ -539,6 +629,8 @@ function displayCombinedResult(
             </div>
 
 
+            <!-- SYNTAX -->
+
             <div class="summary-card">
 
                 <div class="summary-icon">
@@ -547,7 +639,9 @@ function displayCombinedResult(
 
                 <div>
 
-                    <span>Syntax</span>
+                    <span>
+                        Syntax
+                    </span>
 
                     <strong>
                         ${syntaxStatus}
@@ -558,6 +652,8 @@ function displayCombinedResult(
             </div>
 
 
+            <!-- LOGICAL -->
+
             <div class="summary-card">
 
                 <div class="summary-icon">
@@ -566,7 +662,9 @@ function displayCombinedResult(
 
                 <div>
 
-                    <span>Logical</span>
+                    <span>
+                        Logical
+                    </span>
 
                     <strong>
                         ${logicalStatus}
@@ -576,12 +674,13 @@ function displayCombinedResult(
 
             </div>
 
+
         </div>
 
 
-        ${syntaxSection}
+        ${syntaxSectionHTML}
 
-        ${logicalSection}
+        ${logicalSectionHTML}
 
 
         <details class="technical-report">
@@ -590,7 +689,9 @@ function displayCombinedResult(
                 View Complete Technical Analysis Report
             </summary>
 
-            <pre>${escapeHtml(result)}</pre>
+            <pre>
+${escapeHtml(result)}
+            </pre>
 
         </details>
 
@@ -598,51 +699,87 @@ function displayCombinedResult(
 }
 
 
-/* =====================================================
-   EXTRACT SYNTAX ERRORS
-   ===================================================== */
+/* =========================================================
+   GET SYNTAX SECTION
+   ========================================================= */
 
-function extractSyntaxErrors(result) {
+function getSyntaxSection(result) {
+
+    const match =
+        result.match(
+            /SYNTAX ANALYSIS\s*-+\s*([\s\S]*?)(?=\n\s*LOGICAL ERROR ANALYSIS)/i
+        );
+
+
+    if (match) {
+
+        return match[1];
+    }
+
+
+    return "";
+}
+
+
+/* =========================================================
+   EXTRACT SYNTAX ERRORS
+   ========================================================= */
+
+function extractSyntaxErrors(
+    syntaxSection
+) {
 
     const errors = [];
 
+
+    if (!syntaxSection) {
+
+        return errors;
+    }
+
+
     const lines =
-        result.split("\n");
+        syntaxSection.split("\n");
 
 
-    for (let i = 0; i < lines.length; i++) {
+    for (
+        let i = 0;
+        i < lines.length;
+        i++
+    ) {
 
-        const currentLine =
+        const line =
             lines[i].trim();
 
 
         /*
-         * Backend format:
+         * Expected backend format:
          *
-         * Line 11, Column 21: Parse error...
+         * Line 12, Column 22: Parse error...
          */
 
-        const locationMatch =
-            currentLine.match(
+        const match =
+            line.match(
                 /^Line\s+(\d+)\s*,\s*Column\s+(\d+)\s*:\s*(.*)$/i
             );
 
 
-        if (!locationMatch) {
+        if (!match) {
+
             continue;
         }
 
 
         const lineNumber =
-            locationMatch[1];
+            match[1];
 
 
         const columnNumber =
-            locationMatch[2];
+            match[2];
 
 
         let description =
-            locationMatch[3].trim();
+            match[3].trim();
 
 
         if (!description) {
@@ -655,33 +792,57 @@ function extractSyntaxErrors(result) {
         if (description.length > 500) {
 
             description =
-                description.substring(0, 500)
-                + "...";
+                description.substring(
+                    0,
+                    500
+                ) + "...";
         }
 
 
         errors.push({
 
-            line: lineNumber,
+            line:
+                lineNumber,
 
-            column: columnNumber,
+            column:
+                columnNumber,
 
-            description: description
+            description:
+                description
 
         });
     }
 
 
     /*
-     * Remove duplicate syntax errors.
+     * -----------------------------------------------------
+     * REMOVE DUPLICATES
+     * -----------------------------------------------------
      */
 
-    const uniqueErrors = [];
+    return removeDuplicateSyntaxErrors(
+        errors
+    );
+}
 
-    const seen = new Set();
+
+/* =========================================================
+   REMOVE DUPLICATE SYNTAX ERRORS
+   ========================================================= */
+
+function removeDuplicateSyntaxErrors(
+    errors
+) {
+
+    const unique = [];
+
+    const seen =
+        new Set();
 
 
-    for (const error of errors) {
+    for (
+        const error of errors
+    ) {
 
         const key =
             error.line +
@@ -695,63 +856,66 @@ function extractSyntaxErrors(result) {
 
             seen.add(key);
 
-            uniqueErrors.push(error);
+            unique.push(error);
         }
     }
 
 
-    return uniqueErrors;
+    return unique;
 }
 
 
-/* =====================================================
-   COUNT SYNTAX ERRORS
-   ===================================================== */
-
-function countSyntaxErrors(result) {
-
-    const matches =
-        result.match(
-            /^Line\s+\d+\s*,\s*Column\s+\d+\s*:/gim
-        );
-
-
-    if (matches && matches.length > 0) {
-
-        return matches.length;
-    }
-
-
-    return 1;
-}
-
-
-/* =====================================================
+/* =========================================================
    EXTRACT LOGICAL ERRORS
-   ===================================================== */
+   ========================================================= */
 
-function extractErrors(result) {
+function extractLogicalErrors(
+    result
+) {
 
     const errors = [];
+
 
     const lines =
         result.split("\n");
 
 
-    for (let i = 0; i < lines.length; i++) {
+    /*
+     * IMPORTANT:
+     *
+     * Only parse blocks beginning with:
+     *
+     * Error Type:
+     *
+     * This prevents the summary text from being counted
+     * as another error.
+     */
+
+    for (
+        let i = 0;
+        i < lines.length;
+        i++
+    ) {
 
         const current =
             lines[i].trim();
 
 
-        if (!current.startsWith("Error Type:")) {
+        if (
+            !current.startsWith(
+                "Error Type:"
+            )
+        ) {
+
             continue;
         }
 
 
         const type =
             current
-                .substring("Error Type:".length)
+                .substring(
+                    "Error Type:".length
+                )
                 .trim();
 
 
@@ -768,12 +932,17 @@ function extractErrors(result) {
 
 
         /*
-         * Read the current logical error block.
+         * -------------------------------------------------
+         * READ ERROR BLOCK
+         * -------------------------------------------------
          */
 
         for (
             let j = i + 1;
-            j < Math.min(i + 15, lines.length);
+            j < Math.min(
+                i + 20,
+                lines.length
+            );
             j++
         ) {
 
@@ -782,7 +951,7 @@ function extractErrors(result) {
 
 
             /*
-             * Line: 7
+             * LINE
              */
 
             const lineMatch =
@@ -801,7 +970,7 @@ function extractErrors(result) {
 
 
             /*
-             * Condition: age < 10
+             * CONDITION
              */
 
             const conditionMatch =
@@ -820,13 +989,13 @@ function extractErrors(result) {
 
 
             /*
-             * Stop at next logical error.
+             * NEW ERROR BLOCK
              */
 
             if (
-                text.startsWith("Error Type:")
-                ||
-                text.startsWith("Logical Error Detected!")
+                text.startsWith(
+                    "Error Type:"
+                )
             ) {
 
                 break;
@@ -834,17 +1003,45 @@ function extractErrors(result) {
 
 
             /*
-             * Ignore technical information.
+             * IGNORE TECHNICAL LINES
              */
 
             if (
-                text.startsWith("Known variable values:")
-                ||
-                text.startsWith("Generated Constraint:")
-                ||
-                text.startsWith("Z3 Result:")
-                ||
-                text === "----------------------------------------"
+                text.startsWith(
+                    "Known variable values:"
+                ) ||
+
+                text.startsWith(
+                    "Generated Constraint:"
+                ) ||
+
+                text.startsWith(
+                    "Z3 Result:"
+                ) ||
+
+                text.startsWith(
+                    "IF at line"
+                ) ||
+
+                text.startsWith(
+                    "WHILE at line"
+                ) ||
+
+                text.startsWith(
+                    "FOR at line"
+                ) ||
+
+                text ===
+                    "Logical Error Detected!"
+            ) {
+
+                continue;
+            }
+
+
+            if (
+                text ===
+                    "----------------------------------------"
                 ||
                 text === ""
             ) {
@@ -854,23 +1051,45 @@ function extractErrors(result) {
 
 
             /*
-             * Ignore technical headings.
+             * IGNORE HEADINGS
              */
 
             if (
-                text.startsWith("LOGICAL ERROR ANALYSIS")
-                ||
-                text.startsWith("BRANCH ANALYSIS")
-                ||
-                text.startsWith("NESTED IF ANALYSIS")
-                ||
-                text.startsWith("PROGRAM-ORDER DATA-FLOW ANALYSIS")
-                ||
-                text.startsWith("IF / ELSE / LOOP ANALYSIS")
-                ||
-                text.startsWith("STATIC ANALYSIS TOOL")
-                ||
-                text.startsWith("FINAL ANALYSIS REPORT")
+                text.startsWith(
+                    "LOGICAL ERROR ANALYSIS"
+                ) ||
+
+                text.startsWith(
+                    "LOGICAL ANALYSIS"
+                ) ||
+
+                text.startsWith(
+                    "BRANCH ANALYSIS"
+                ) ||
+
+                text.startsWith(
+                    "NESTED IF ANALYSIS"
+                ) ||
+
+                text.startsWith(
+                    "PROGRAM-ORDER DATA-FLOW ANALYSIS"
+                ) ||
+
+                text.startsWith(
+                    "IF / ELSE / LOOP ANALYSIS"
+                ) ||
+
+                text.startsWith(
+                    "STATIC ANALYSIS TOOL"
+                ) ||
+
+                text.startsWith(
+                    "FINAL ANALYSIS REPORT"
+                ) ||
+
+                text.startsWith(
+                    "File:"
+                )
             ) {
 
                 continue;
@@ -878,10 +1097,12 @@ function extractErrors(result) {
 
 
             /*
-             * Add useful description.
+             * DESCRIPTION
              */
 
-            if (description.length === 0) {
+            if (
+                description.length === 0
+            ) {
 
                 description =
                     text;
@@ -895,14 +1116,22 @@ function extractErrors(result) {
 
 
         /*
-         * Fallback: find the condition line above.
+         * -------------------------------------------------
+         * FALLBACK FOR LINE / CONDITION
+         * -------------------------------------------------
          */
 
-        if (lineNumber === "Unknown") {
+        if (
+            lineNumber ===
+            "Unknown"
+        ) {
 
             for (
                 let k = i - 1;
-                k >= Math.max(0, i - 20);
+                k >= Math.max(
+                    0,
+                    i - 20
+                );
                 k--
             ) {
 
@@ -916,7 +1145,9 @@ function extractErrors(result) {
                     );
 
 
-                if (conditionAtLine) {
+                if (
+                    conditionAtLine
+                ) {
 
                     lineNumber =
                         conditionAtLine[1];
@@ -925,7 +1156,8 @@ function extractErrors(result) {
                     if (!condition) {
 
                         condition =
-                            conditionAtLine[2].trim();
+                            conditionAtLine[2]
+                                .trim();
                     }
 
 
@@ -939,7 +1171,9 @@ function extractErrors(result) {
                     );
 
 
-                if (controlMatch) {
+                if (
+                    controlMatch
+                ) {
 
                     lineNumber =
                         controlMatch[1];
@@ -948,7 +1182,8 @@ function extractErrors(result) {
                     if (!condition) {
 
                         condition =
-                            controlMatch[2].trim();
+                            controlMatch[2]
+                                .trim();
                     }
 
 
@@ -959,10 +1194,14 @@ function extractErrors(result) {
 
 
         /*
-         * Avoid empty description.
+         * -------------------------------------------------
+         * DESCRIPTION FALLBACK
+         * -------------------------------------------------
          */
 
-        if (!description) {
+        if (
+            !description
+        ) {
 
             description =
                 "Logical problem detected for this condition.";
@@ -971,28 +1210,51 @@ function extractErrors(result) {
 
         errors.push({
 
-            line: lineNumber,
+            line:
+                lineNumber,
 
-            type: type,
+            type:
+                type,
 
-            condition: condition,
+            condition:
+                condition,
 
-            description: description
+            description:
+                description
 
         });
     }
 
 
     /*
-     * Remove duplicates.
+     * -----------------------------------------------------
+     * REMOVE DUPLICATES
+     * -----------------------------------------------------
      */
 
-    const uniqueErrors = [];
+    return removeDuplicateLogicalErrors(
+        errors
+    );
+}
 
-    const seen = new Set();
+
+/* =========================================================
+   REMOVE DUPLICATE LOGICAL ERRORS
+   ========================================================= */
+
+function removeDuplicateLogicalErrors(
+    errors
+) {
+
+    const unique = [];
+
+    const seen =
+        new Set();
 
 
-    for (const error of errors) {
+    for (
+        const error of errors
+    ) {
 
         const key =
             error.line +
@@ -1006,30 +1268,36 @@ function extractErrors(result) {
 
             seen.add(key);
 
-            uniqueErrors.push(error);
+            unique.push(error);
         }
     }
 
 
-    return uniqueErrors;
+    return unique;
 }
 
 
-/* =====================================================
-   DISPLAY SUCCESS RESULT
-   ===================================================== */
+/* =========================================================
+   SUCCESS RESULT
+   ========================================================= */
 
-function displaySuccessResult(result) {
+function displaySuccessResult(
+    result
+) {
 
     const resultBox =
-        document.getElementById("resultBox");
+        document.getElementById(
+            "resultBox"
+        );
 
 
     resultBox.innerHTML = `
 
         <div class="result-header success-header">
 
-            <span>✓</span>
+            <span>
+                ✓
+            </span>
 
             <div>
 
@@ -1048,6 +1316,7 @@ function displaySuccessResult(result) {
 
         <div class="analysis-summary">
 
+
             <div class="summary-card">
 
                 <div class="summary-icon">
@@ -1056,7 +1325,9 @@ function displaySuccessResult(result) {
 
                 <div>
 
-                    <span>Status</span>
+                    <span>
+                        Status
+                    </span>
 
                     <strong>
                         No Errors Found
@@ -1075,7 +1346,9 @@ function displaySuccessResult(result) {
 
                 <div>
 
-                    <span>Errors</span>
+                    <span>
+                        Errors
+                    </span>
 
                     <strong>
                         0 Errors
@@ -1094,7 +1367,9 @@ function displaySuccessResult(result) {
 
                 <div>
 
-                    <span>Syntax</span>
+                    <span>
+                        Syntax
+                    </span>
 
                     <strong>
                         No Syntax Errors
@@ -1103,6 +1378,7 @@ function displaySuccessResult(result) {
                 </div>
 
             </div>
+
 
         </div>
 
@@ -1113,7 +1389,9 @@ function displaySuccessResult(result) {
                 View Complete Technical Analysis Report
             </summary>
 
-            <pre>${escapeHtml(result)}</pre>
+            <pre>
+${escapeHtml(result)}
+            </pre>
 
         </details>
 
@@ -1121,9 +1399,9 @@ function displaySuccessResult(result) {
 }
 
 
-/* =====================================================
+/* =========================================================
    CLEAR CODE
-   ===================================================== */
+   ========================================================= */
 
 function clearCode() {
 
@@ -1157,14 +1435,18 @@ function clearCode() {
 }
 
 
-/* =====================================================
+/* =========================================================
    HTML ESCAPE
-   ===================================================== */
+   ========================================================= */
 
-function escapeHtml(text) {
+function escapeHtml(
+    text
+) {
 
     const div =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
 
 
     div.textContent =
