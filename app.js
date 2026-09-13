@@ -1,9 +1,11 @@
 async function analyzeCode() {
+
     const code = document.getElementById("codeInput").value;
     const resultBox = document.getElementById("resultBox");
     const button = document.getElementById("analyzeButton");
 
     if (!code.trim()) {
+
         resultBox.innerHTML = `
             <div class="empty-result">
                 <div class="empty-icon">⚠</div>
@@ -11,6 +13,7 @@ async function analyzeCode() {
                 <p>Paste a Java program into the code editor.</p>
             </div>
         `;
+
         return;
     }
 
@@ -26,6 +29,7 @@ async function analyzeCode() {
     `;
 
     try {
+
         const response = await fetch(
             "https://logical-error-detector-backend.onrender.com/analyze",
             {
@@ -43,30 +47,45 @@ async function analyzeCode() {
             throw new Error(result);
         }
 
-        const hasSyntaxErrors =
-    	   /SYNTAX ANALYSIS[\s\S]*?Syntax errors detected!/i.test(result) &&
-    	   !/SYNTAX ANALYSIS[\s\S]*?✓\s*No syntax errors found/i.test(result);
 
-        const hasLogicalErrors =
+        /* =================================================
+           DETECT SYNTAX AND LOGICAL ERRORS
+           ================================================= */
+
+        const syntaxDetected =
+            /syntax\s+errors?\s+detected/i.test(result) ||
+            /syntax\s+error\s+details/i.test(result) ||
+            /parse\s+error/i.test(result) ||
+            /parsing\s+failed/i.test(result) ||
+            /javaparser.*exception/i.test(result) ||
+            /syntax\s+errors?\s+were\s+detected/i.test(result);
+
+
+        const logicalDetected =
             /logical\s+errors?\s+detected/i.test(result) ||
             /logical\s+error\s+detected!/i.test(result) ||
             /error\s+type:/i.test(result);
 
+
         /*
          * IMPORTANT:
-         * Do NOT return immediately when syntax errors exist.
          *
-         * The backend is now capable of detecting both syntax
-         * and logical errors.
+         * Always use the combined display when either
+         * syntax or logical errors are detected.
          */
-        if (hasSyntaxErrors || hasLogicalErrors) {
+
+        if (syntaxDetected || logicalDetected) {
+
             displayCombinedResult(
                 result,
-                hasSyntaxErrors,
-                hasLogicalErrors
+                syntaxDetected,
+                logicalDetected
             );
+
         } else {
+
             displaySuccessResult(result);
+
         }
 
     } catch (error) {
@@ -79,11 +98,13 @@ async function analyzeCode() {
                     <span>⚠</span>
 
                     <div>
+
                         <h2>Backend Not Connected</h2>
 
                         <p>
                             The analysis server could not be reached.
                         </p>
+
                     </div>
 
                 </div>
@@ -99,6 +120,7 @@ async function analyzeCode() {
 
         button.disabled = false;
         button.textContent = "Analyze Code";
+
     }
 }
 
@@ -116,11 +138,14 @@ function displayCombinedResult(
     const resultBox =
         document.getElementById("resultBox");
 
+
     const syntaxErrors =
         extractSyntaxErrors(result);
 
+
     const logicalErrors =
         extractErrors(result);
+
 
     const syntaxCount =
         syntaxErrors.length > 0
@@ -129,10 +154,12 @@ function displayCombinedResult(
                 ? countSyntaxErrors(result)
                 : 0;
 
+
     const logicalCount =
         logicalErrors.length;
 
-    let totalErrors =
+
+    const totalErrors =
         syntaxCount + logicalCount;
 
 
@@ -143,6 +170,7 @@ function displayCombinedResult(
     let title = "";
     let message = "";
 
+
     if (hasSyntaxErrors && hasLogicalErrors) {
 
         title = "Syntax & Logical Errors Detected";
@@ -150,77 +178,91 @@ function displayCombinedResult(
         message =
             "The analyzer found both syntax and logical problems in the Java program.";
 
-    } else if (hasSyntaxErrors) {
+    }
+
+    else if (hasSyntaxErrors) {
 
         title = "Syntax Errors Detected";
 
         message =
             "The analyzer found syntax errors in the Java program.";
 
-    } else {
+    }
+
+    else {
 
         title = "Logical Errors Detected";
 
         message =
             "The analyzer found logical problems in the Java program.";
+
     }
 
 
     /* =================================================
-       SYNTAX CARDS
+       SYNTAX SECTION
        ================================================= */
 
     let syntaxSection = "";
+
 
     if (hasSyntaxErrors) {
 
         let syntaxCards = "";
 
+
         if (syntaxErrors.length > 0) {
 
-            syntaxCards = syntaxErrors.map(
-                (error, index) => {
+            syntaxCards =
+                syntaxErrors.map(
+                    (error, index) => {
 
-                    return `
-                        <div class="detected-error-card">
+                        return `
+                            <div class="detected-error-card">
 
-                            <div class="error-title">
+                                <div class="error-title">
 
-                                <span class="error-badge">
-                                    ERROR ${index + 1}
-                                </span>
+                                    <span class="error-badge">
+                                        ERROR ${index + 1}
+                                    </span>
 
-                                <h3>
-                                    Syntax Error
-                                </h3>
+                                    <h3>
+                                        Syntax Error
+                                    </h3>
+
+                                </div>
+
+                                <p>
+
+                                    📍
+
+                                    <strong>
+                                        Line ${escapeHtml(error.line)}
+                                    </strong>
+
+                                    ${
+                                        error.column !== "Unknown"
+                                            ? `, Column ${escapeHtml(error.column)}`
+                                            : ""
+                                    }
+
+                                    — Error found at this location.
+
+                                </p>
+
+                                <p>
+                                    ${escapeHtml(error.description)}
+                                </p>
 
                             </div>
+                        `;
 
-                            <p>
-                                📍
-                                <strong>
-                                    Line ${escapeHtml(error.line)}
-                                </strong>
+                    }
+                ).join("");
 
-                                ${
-                                    error.column !== "Unknown"
-                                        ? `, Column ${escapeHtml(error.column)}`
-                                        : ""
-                                }
+        }
 
-                                — Error found at this location.
-                            </p>
-
-                            <p>
-                                ${escapeHtml(error.description)}
-                            </p>
-
-                        </div>
-                    `;
-                }
-            ).join("");
-
-        } else {
+        else {
 
             syntaxCards = `
                 <div class="detected-error-card">
@@ -244,6 +286,7 @@ function displayCombinedResult(
 
                 </div>
             `;
+
         }
 
 
@@ -251,24 +294,30 @@ function displayCombinedResult(
 
             <div class="detected-errors">
 
-                <h2>Detected Syntax Errors</h2>
+                <h2>
+                    Detected Syntax Errors
+                </h2>
 
                 ${syntaxCards}
 
             </div>
+
         `;
+
     }
 
 
     /* =================================================
-       LOGICAL ERROR CARDS
+       LOGICAL ERROR SECTION
        ================================================= */
 
     let logicalSection = "";
 
+
     if (hasLogicalErrors) {
 
         let logicalCards = "";
+
 
         if (logicalErrors.length > 0) {
 
@@ -292,6 +341,7 @@ function displayCombinedResult(
                                 </div>
 
                                 <p>
+
                                     📍
 
                                     <strong>
@@ -299,6 +349,7 @@ function displayCombinedResult(
                                     </strong>
 
                                     — Error found at this line.
+
                                 </p>
 
                                 <p>
@@ -309,12 +360,15 @@ function displayCombinedResult(
                                     error.condition
                                         ? `
                                             <p>
+
                                                 Condition:
+
                                                 <code>
                                                     ${escapeHtml(
                                                         error.condition
                                                     )}
                                                 </code>
+
                                             </p>
                                         `
                                         : ""
@@ -322,10 +376,13 @@ function displayCombinedResult(
 
                             </div>
                         `;
+
                     }
                 ).join("");
 
-        } else {
+        }
+
+        else {
 
             logicalCards = `
                 <div class="detected-error-card">
@@ -349,6 +406,7 @@ function displayCombinedResult(
 
                 </div>
             `;
+
         }
 
 
@@ -356,12 +414,16 @@ function displayCombinedResult(
 
             <div class="detected-errors">
 
-                <h2>Detected Logical Errors</h2>
+                <h2>
+                    Detected Logical Errors
+                </h2>
 
                 ${logicalCards}
 
             </div>
+
         `;
+
     }
 
 
@@ -369,13 +431,13 @@ function displayCombinedResult(
        SUMMARY
        ================================================= */
 
-    let syntaxStatus =
+    const syntaxStatus =
         hasSyntaxErrors
             ? "Syntax Errors Found"
             : "No Syntax Errors";
 
 
-    let logicalStatus =
+    const logicalStatus =
         hasLogicalErrors
             ? "Logical Errors Found"
             : "No Logical Errors";
@@ -404,6 +466,7 @@ function displayCombinedResult(
 
         <div class="analysis-summary">
 
+
             <div class="summary-card">
 
                 <div class="summary-icon">
@@ -415,7 +478,8 @@ function displayCombinedResult(
                     <span>Status</span>
 
                     <strong>
-                        ${totalErrors} Error${totalErrors === 1 ? "" : "s"} Found
+                        ${totalErrors}
+                        Error${totalErrors === 1 ? "" : "s"} Found
                     </strong>
 
                 </div>
@@ -460,6 +524,7 @@ function displayCombinedResult(
 
             </div>
 
+
         </div>
 
 
@@ -492,57 +557,130 @@ function extractSyntaxErrors(result) {
 
     const lines = result.split("\n");
 
+
     for (let i = 0; i < lines.length; i++) {
 
         const currentLine =
             lines[i].trim();
 
-        const locationMatch =
+
+        /*
+         * Format 1:
+         *
+         * (line 11,col 21) Parse error.
+         */
+
+        let match =
             currentLine.match(
                 /\(line\s+(\d+)\s*,\s*col\s+(\d+)\)\s*(.*)/i
             );
 
-        if (!locationMatch) {
+
+        if (match) {
+
+            let description =
+                match[3].trim();
+
+
+            /*
+             * Remove stack trace from description.
+             */
+
+            const stackIndex =
+                description.search(
+                    /Problem stacktrace/i
+                );
+
+
+            if (stackIndex !== -1) {
+
+                description =
+                    description.substring(
+                        0,
+                        stackIndex
+                    ).trim();
+
+            }
+
+
+            if (!description) {
+
+                description =
+                    "Invalid Java syntax.";
+
+            }
+
+
+            errors.push({
+
+                line: match[1],
+
+                column: match[2],
+
+                description: description
+
+            });
+
+
             continue;
-        }
-
-        const lineNumber =
-            locationMatch[1];
-
-        const columnNumber =
-            locationMatch[2];
-
-        let description =
-            locationMatch[3].trim();
-
-
-        if (!description) {
-            description = "Invalid Java syntax.";
         }
 
 
         /*
-         * Only use the parse-error line.
-         * Do NOT consume the entire stack trace.
+         * Format 2:
+         *
+         * Line 11, Column 21: Parse error.
          */
 
-        if (description.length > 500) {
+        match =
+            currentLine.match(
+                /^Line\s+(\d+)\s*,\s*Column\s+(\d+)\s*:\s*(.*)$/i
+            );
 
-            description =
-                description.substring(0, 500)
-                + "...";
+
+        if (match) {
+
+            let description =
+                match[3].trim();
+
+
+            const stackIndex =
+                description.search(
+                    /Problem stacktrace/i
+                );
+
+
+            if (stackIndex !== -1) {
+
+                description =
+                    description.substring(
+                        0,
+                        stackIndex
+                    ).trim();
+
+            }
+
+
+            if (!description) {
+
+                description =
+                    "Invalid Java syntax.";
+
+            }
+
+
+            errors.push({
+
+                line: match[1],
+
+                column: match[2],
+
+                description: description
+
+            });
+
         }
 
-
-        errors.push({
-
-            line: lineNumber,
-
-            column: columnNumber,
-
-            description: description
-
-        });
     }
 
 
@@ -554,6 +692,7 @@ function extractSyntaxErrors(result) {
 
     const seen = new Set();
 
+
     for (const error of errors) {
 
         const key =
@@ -563,12 +702,15 @@ function extractSyntaxErrors(result) {
             "|" +
             error.description;
 
+
         if (!seen.has(key)) {
 
             seen.add(key);
 
             uniqueErrors.push(error);
+
         }
+
     }
 
 
@@ -582,16 +724,31 @@ function extractSyntaxErrors(result) {
 
 function countSyntaxErrors(result) {
 
-    const matches =
+    const parenthesisMatches =
         result.match(
             /\(line\s+\d+\s*,\s*col\s+\d+\)/gi
         );
 
-    if (matches && matches.length > 0) {
-        return matches.length;
-    }
 
-    return 1;
+    const lineColumnMatches =
+        result.match(
+            /Line\s+\d+\s*,\s*Column\s+\d+/gi
+        );
+
+
+    const count =
+        (parenthesisMatches
+            ? parenthesisMatches.length
+            : 0)
+        +
+        (lineColumnMatches
+            ? lineColumnMatches.length
+            : 0);
+
+
+    return count > 0
+        ? count
+        : 1;
 }
 
 
@@ -603,25 +760,21 @@ function extractErrors(result) {
 
     const errors = [];
 
-    const lines = result.split("\n");
+    const lines =
+        result.split("\n");
 
-
-    /*
-     * We specifically read:
-     *
-     * Error Type:
-     * Line:
-     * Condition:
-     *
-     * This prevents unrelated technical-report text
-     * from becoming an error card.
-     */
 
     for (let i = 0; i < lines.length; i++) {
 
         const current =
             lines[i].trim();
 
+
+        /*
+         * Only start an error card at:
+         *
+         * Error Type:
+         */
 
         if (!current.startsWith("Error Type:")) {
             continue;
@@ -637,20 +790,22 @@ function extractErrors(result) {
         let lineNumber =
             "Unknown";
 
+
         let condition =
             "";
+
 
         let description =
             "";
 
 
         /*
-         * Look around the current error block.
+         * Read only this error block.
          */
 
         for (
             let j = i + 1;
-            j < Math.min(i + 12, lines.length);
+            j < Math.min(i + 10, lines.length);
             j++
         ) {
 
@@ -659,13 +814,56 @@ function extractErrors(result) {
 
 
             /*
-             * Line: 7
+             * Stop at another error.
+             */
+
+            if (
+                text.startsWith("Error Type:")
+                ||
+                text.startsWith("Logical Error Detected!")
+            ) {
+
+                break;
+            }
+
+
+            /*
+             * Stop at a new analysis section.
+             */
+
+            if (
+                text.startsWith("IF / ELSE")
+                ||
+                text.startsWith("IF / ELSE / LOOP")
+                ||
+                text.startsWith("WHILE LOOP")
+                ||
+                text.startsWith("DO-WHILE LOOP")
+                ||
+                text.startsWith("FOR LOOP")
+                ||
+                text.startsWith("BRANCH ANALYSIS")
+                ||
+                text.startsWith("NESTED IF ANALYSIS")
+                ||
+                text.startsWith("FINAL ANALYSIS REPORT")
+                ||
+                text.startsWith("========================================")
+            ) {
+
+                break;
+            }
+
+
+            /*
+             * Line: 8
              */
 
             const lineMatch =
                 text.match(
                     /^Line:\s*(\d+)/i
                 );
+
 
             if (lineMatch) {
 
@@ -685,6 +883,7 @@ function extractErrors(result) {
                     /^Condition:\s*(.*)/i
                 );
 
+
             if (conditionMatch) {
 
                 condition =
@@ -695,21 +894,7 @@ function extractErrors(result) {
 
 
             /*
-             * Stop at the next logical error.
-             */
-
-            if (
-                text.startsWith("Error Type:")
-                ||
-                text.startsWith("Logical Error Detected!")
-            ) {
-
-                break;
-            }
-
-
-            /*
-             * Ignore technical noise.
+             * Ignore technical information.
              */
 
             if (
@@ -729,33 +914,22 @@ function extractErrors(result) {
 
 
             /*
-             * Add useful description.
+             * Add description.
              */
 
-            if (
-                !text.startsWith("LOGICAL ERROR ANALYSIS")
-                &&
-                !text.startsWith("BRANCH ANALYSIS")
-                &&
-                !text.startsWith("NESTED IF ANALYSIS")
-            ) {
+            if (!description) {
 
-                if (description.length === 0) {
+                description =
+                    text;
 
-                    description = text;
-
-                } else {
-
-                    description +=
-                        " " + text;
-                }
             }
+
         }
 
 
         /*
-         * If backend did not explicitly print Line:,
-         * find the nearest "Condition at line" above it.
+         * If Line: was not printed,
+         * find the nearest condition above.
          */
 
         if (lineNumber === "Unknown") {
@@ -770,22 +944,25 @@ function extractErrors(result) {
                     lines[k].trim();
 
 
-                const match =
+                const conditionMatch =
                     previous.match(
                         /Condition\s+at\s+line\s+(\d+):\s*(.*)/i
                     );
 
 
-                if (match) {
+                if (conditionMatch) {
 
                     lineNumber =
-                        match[1];
+                        conditionMatch[1];
+
 
                     if (!condition) {
 
                         condition =
-                            match[2].trim();
+                            conditionMatch[2].trim();
+
                     }
+
 
                     break;
                 }
@@ -802,26 +979,28 @@ function extractErrors(result) {
                     lineNumber =
                         ifMatch[1];
 
+
                     if (!condition) {
 
                         condition =
                             ifMatch[2].trim();
+
                     }
+
 
                     break;
                 }
+
             }
+
         }
 
-
-        /*
-         * Avoid empty descriptions.
-         */
 
         if (!description) {
 
             description =
                 "Logical problem detected for this condition.";
+
         }
 
 
@@ -836,14 +1015,12 @@ function extractErrors(result) {
             description: description
 
         });
+
     }
 
 
     /*
-     * Remove duplicates.
-     *
-     * Same line + same type + same condition
-     * = same logical error.
+     * Remove duplicate logical errors.
      */
 
     const uniqueErrors = [];
@@ -866,7 +1043,9 @@ function extractErrors(result) {
             seen.add(key);
 
             uniqueErrors.push(error);
+
         }
+
     }
 
 
@@ -882,6 +1061,7 @@ function displaySuccessResult(result) {
 
     const resultBox =
         document.getElementById("resultBox");
+
 
     resultBox.innerHTML = `
 
@@ -905,6 +1085,7 @@ function displaySuccessResult(result) {
 
 
         <div class="analysis-summary">
+
 
             <div class="summary-card">
 
@@ -962,6 +1143,7 @@ function displaySuccessResult(result) {
 
             </div>
 
+
         </div>
 
 
@@ -988,6 +1170,7 @@ function clearCode() {
     document.getElementById(
         "codeInput"
     ).value = "";
+
 
     document.getElementById(
         "resultBox"
@@ -1023,10 +1206,12 @@ function escapeHtml(text) {
     const div =
         document.createElement("div");
 
+
     div.textContent =
         text == null
             ? ""
             : String(text);
+
 
     return div.innerHTML;
 }
