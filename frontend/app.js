@@ -44,10 +44,8 @@ async function analyzeCode() {
         }
 
         const hasSyntaxErrors =
-            /syntax\s+errors?\s+detected/i.test(result) ||
-            /parse\s+error/i.test(result) ||
-            /parsing\s+failed/i.test(result) ||
-            /javaparser.*exception/i.test(result);
+    	   /SYNTAX ANALYSIS[\s\S]*?Syntax errors detected!/i.test(result) &&
+    	   !/SYNTAX ANALYSIS[\s\S]*?✓\s*No syntax errors found/i.test(result);
 
         const hasLogicalErrors =
             /logical\s+errors?\s+detected/i.test(result) ||
