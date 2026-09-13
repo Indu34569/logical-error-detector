@@ -1,7 +1,8 @@
 package com.project.server;
 
+import com.github.javaparser.ParseResult;
+import com.github.javaparser.Problem;
 import com.github.javaparser.StaticJavaParser;
-import com.github.javaparser.ast.CompilationUnit;
 import com.project.analyzer.LogicalErrorDetector;
 
 import com.sun.net.httpserver.Headers;
@@ -27,11 +28,19 @@ public class AnalysisServer {
                     System.getenv().getOrDefault("PORT", "8080")
             );
 
+    /*
+     * The frontend sends code here.
+     */
     private static final Path INPUT_FILE =
             Path.of("test-input/tests/WebInput.java");
 
+    /*
+     * IMPORTANT:
+     * The LogicalErrorDetector replacement reads WebInput.java.
+     * Therefore the detector must receive the user's code here too.
+     */
     private static final Path DETECTOR_FILE =
-            Path.of("test-input/tests/TestUnreachableWhile.java");
+            Path.of("test-input/tests/WebInput.java");
 
 
     public static void main(String[] args) throws Exception {
@@ -79,11 +88,9 @@ public class AnalysisServer {
 
             addCorsHeaders(exchange);
 
-
-            // ==================================================
-            // CORS PREFLIGHT
-            // ==================================================
-
+            /*
+             * CORS preflight
+             */
             if ("OPTIONS".equalsIgnoreCase(
                     exchange.getRequestMethod())) {
 
@@ -98,10 +105,9 @@ public class AnalysisServer {
             }
 
 
-            // ==================================================
-            // ONLY POST IS ALLOWED
-            // ==================================================
-
+            /*
+             * Only POST is allowed.
+             */
             if (!"POST".equalsIgnoreCase(
                     exchange.getRequestMethod())) {
 
@@ -115,10 +121,9 @@ public class AnalysisServer {
             }
 
 
-            // ==================================================
-            // READ FRONTEND CODE
-            // ==================================================
-
+            /*
+             * Read Java code sent by frontend.
+             */
             String code =
                     readRequestBody(
                             exchange.getRequestBody()
@@ -137,10 +142,9 @@ public class AnalysisServer {
             }
 
 
-            // ==================================================
-            // SAVE ORIGINAL CODE
-            // ==================================================
-
+            /*
+             * Save exactly what the user entered.
+             */
             Files.createDirectories(
                     INPUT_FILE.getParent()
             );
@@ -161,18 +165,16 @@ public class AnalysisServer {
             );
 
 
-            // ==================================================
-            // RUN COMBINED ANALYSIS
-            // ==================================================
-
+            /*
+             * Perform BOTH syntax and logical analysis.
+             */
             String result =
                     analyzeCode(code);
 
 
-            // ==================================================
-            // SEND RESULT TO FRONTEND
-            // ==================================================
-
+            /*
+             * Always return the complete report.
+             */
             sendResponse(
                     exchange,
                     200,
@@ -210,131 +212,172 @@ public class AnalysisServer {
     }
 
 
-    // ==========================================================
-    // COMBINED SYNTAX + LOGICAL ANALYSIS
-    // ==========================================================
-
+    /*
+     * ==========================================================
+     * COMBINED SYNTAX + LOGICAL ANALYSIS
+     * ==========================================================
+     */
     private static String analyzeCode(
             String originalCode)
             throws Exception {
 
-        StringBuilder finalReport =
+        StringBuilder report =
                 new StringBuilder();
 
 
-        // ==================================================
-        // STEP 1: SYNTAX ANALYSIS
-        // ==================================================
+        /*
+         * ======================================================
+         * STEP 1: SYNTAX ANALYSIS
+         * ======================================================
+         */
+
+        report.append(
+                "========================================\n"
+        );
+
+        report.append(
+                "       STATIC ANALYSIS TOOL\n"
+        );
+
+        report.append(
+                "========================================\n\n"
+        );
+
+        report.append(
+                "File: "
+                        + INPUT_FILE
+                        + "\n\n"
+        );
+
+
+        report.append(
+                "SYNTAX ANALYSIS\n"
+        );
+
+        report.append(
+                "----------------------------------------\n"
+        );
+
 
         boolean syntaxError = false;
 
-        String syntaxMessage = "";
+        List<Problem> syntaxProblems =
+                new ArrayList<>();
 
 
+        /*
+         * Use JavaParser directly so that we can collect
+         * syntax problems without stopping the whole analysis.
+         */
         try {
 
-            StaticJavaParser.parse(
-                    originalCode
-            );
+            ParseResult<com.github.javaparser.ast.CompilationUnit>
+                    parseResult =
+                    new com.github.javaparser.JavaParser()
+                            .parse(originalCode);
+
+
+            if (parseResult.getProblems().isEmpty()) {
+
+                report.append(
+                        "No syntax errors found.\n\n"
+                );
+
+            } else {
+
+                syntaxError = true;
+
+                syntaxProblems.addAll(
+                        parseResult.getProblems()
+                );
+
+                report.append(
+                        "Syntax errors detected!\n\n"
+                );
+
+                report.append(
+                        "Syntax Error Details:\n"
+                );
+
+                report.append(
+                        "----------------------------------------\n"
+                );
+
+
+                for (Problem problem : syntaxProblems) {
+
+                    report.append(
+                            formatProblem(problem)
+                    );
+
+                    report.append("\n");
+                }
+
+                report.append("\n");
+            }
+
 
         } catch (Exception e) {
 
             syntaxError = true;
 
-            syntaxMessage =
-                    e.getMessage() == null
-                            ? "Java syntax error detected."
-                            : e.getMessage();
-        }
-
-
-        // ==================================================
-        // STEP 2: PRINT SYNTAX RESULT
-        // ==================================================
-
-        finalReport.append(
-                "SYNTAX ANALYSIS\n"
-        );
-
-        finalReport.append(
-                "----------------------------------------\n"
-        );
-
-
-        if (!syntaxError) {
-
-            finalReport.append(
-                    "No syntax errors found\n"
+            report.append(
+                    "Syntax errors detected!\n\n"
             );
 
-            finalReport.append("\n");
-
-        } else {
-
-            finalReport.append(
-                    "Syntax errors detected!\n"
-            );
-
-            finalReport.append("\n");
-
-            finalReport.append(
+            report.append(
                     "Syntax Error Details:\n"
             );
 
-            finalReport.append(
+            report.append(
                     "----------------------------------------\n"
             );
 
-            finalReport.append(
-                    formatSyntaxError(
-                            syntaxMessage,
-                            originalCode
+            report.append(
+                    formatException(
+                            e
                     )
             );
 
-            finalReport.append("\n\n");
+            report.append("\n\n");
         }
 
-
-        // ==================================================
-        // STEP 3: LOGICAL ANALYSIS
-        // ==================================================
 
         /*
-         * If the original program is syntactically valid,
-         * analyze it directly.
+         * ======================================================
+         * STEP 2: RECOVER CODE FOR LOGICAL ANALYSIS
+         * ======================================================
          *
-         * If syntax errors exist, attempt a safe recovery
-         * for common errors such as a missing semicolon.
+         * If there is a common syntax error such as:
          *
-         * This allows the logical analyzer to continue when
-         * the rest of the program is still understandable.
+         * int salary = 30000
+         *
+         * we repair it to:
+         *
+         * int salary = 30000;
+         *
+         * while preserving the rest of the user's code.
          */
 
-        String codeForLogicalAnalysis =
-                originalCode;
+        String logicalCode =
+                repairCommonSyntaxErrors(
+                        originalCode
+                );
 
 
-        if (syntaxError) {
+        /*
+         * ======================================================
+         * STEP 3: CHECK RECOVERED CODE
+         * ======================================================
+         */
 
-            codeForLogicalAnalysis =
-                    repairCommonSyntaxErrors(
-                            originalCode
-                    );
-        }
-
-
-        // ==================================================
-        // STEP 4: CHECK WHETHER RECOVERED CODE PARSES
-        // ==================================================
-
-        boolean recoveredSuccessfully = false;
-
+        boolean recoveredSuccessfully =
+                false;
 
         try {
 
             StaticJavaParser.parse(
-                    codeForLogicalAnalysis
+                    logicalCode
             );
 
             recoveredSuccessfully = true;
@@ -345,28 +388,41 @@ public class AnalysisServer {
         }
 
 
-        // ==================================================
-        // STEP 5: RUN EXISTING LOGICAL DETECTOR
-        // ==================================================
+        /*
+         * ======================================================
+         * STEP 4: LOGICAL ANALYSIS
+         * ======================================================
+         */
 
-        finalReport.append(
+        report.append(
                 "LOGICAL ERROR ANALYSIS\n"
         );
 
-        finalReport.append(
+        report.append(
                 "----------------------------------------\n"
         );
 
 
+        /*
+         * IMPORTANT:
+         *
+         * Even when syntax errors exist, we still attempt
+         * logical analysis.
+         */
         if (recoveredSuccessfully) {
 
             Files.createDirectories(
                     DETECTOR_FILE.getParent()
             );
 
+
+            /*
+             * Write recovered code to the SAME file
+             * LogicalErrorDetector reads.
+             */
             Files.writeString(
                     DETECTOR_FILE,
-                    codeForLogicalAnalysis,
+                    logicalCode,
                     StandardCharsets.UTF_8
             );
 
@@ -375,38 +431,88 @@ public class AnalysisServer {
                     runLogicalDetector();
 
 
-            finalReport.append(
-                    logicalResult
+            /*
+             * Remove the detector's own header if present.
+             * The frontend only needs the analysis content.
+             */
+            report.append(
+                    cleanLogicalResult(
+                            logicalResult
+                    )
             );
 
         } else {
 
-            finalReport.append(
-                    "Logical analysis could not be completed "
-                            + "because the syntax errors could not "
-                            + "be safely recovered.\n"
+            /*
+             * Even if full recovery fails, perform a
+             * lightweight logical analysis directly here.
+             */
+            String lightweightResult =
+                    lightweightLogicalAnalysis(
+                            logicalCode
+                    );
+
+            report.append(
+                    lightweightResult
             );
         }
 
 
-        return finalReport.toString();
+        /*
+         * ======================================================
+         * STEP 5: FINAL SUMMARY
+         * ======================================================
+         */
+
+        report.append("\n\n");
+
+        report.append(
+                "========================================\n"
+        );
+
+        if (syntaxError) {
+
+            report.append(
+                    "Syntax errors were detected.\n"
+            );
+
+            report.append(
+                    "Logical analysis was also performed.\n"
+            );
+
+        } else {
+
+            report.append(
+                    "No syntax errors were detected.\n"
+            );
+
+            report.append(
+                    "Logical analysis was completed.\n"
+            );
+        }
+
+        report.append(
+                "========================================\n"
+        );
+
+
+        return report.toString();
     }
 
 
-    // ==========================================================
-    // RUN EXISTING LOGICAL ERROR DETECTOR
-    // ==========================================================
-
+    /*
+     * ==========================================================
+     * RUN LOGICAL ERROR DETECTOR
+     * ==========================================================
+     */
     private static String runLogicalDetector()
             throws Exception {
 
         PrintStream originalOut =
                 System.out;
 
-
         ByteArrayOutputStream output =
                 new ByteArrayOutputStream();
-
 
         PrintStream capture =
                 new PrintStream(
@@ -418,7 +524,9 @@ public class AnalysisServer {
 
         try {
 
-            System.setOut(capture);
+            System.setOut(
+                    capture
+            );
 
 
             LogicalErrorDetector.main(
@@ -428,7 +536,9 @@ public class AnalysisServer {
 
         } finally {
 
-            System.setOut(originalOut);
+            System.setOut(
+                    originalOut
+            );
 
             capture.close();
         }
@@ -440,10 +550,210 @@ public class AnalysisServer {
     }
 
 
-    // ==========================================================
-    // COMMON SYNTAX ERROR RECOVERY
-    // ==========================================================
+    /*
+     * ==========================================================
+     * LIGHTWEIGHT LOGICAL ANALYSIS
+     * ==========================================================
+     *
+     * This is a safety fallback.
+     *
+     * Example:
+     *
+     * int age = 20;
+     *
+     * if (age < 10) {
+     *
+     * }
+     *
+     * It detects that age < 10 is impossible.
+     */
+    private static String lightweightLogicalAnalysis(
+            String code) {
 
+        StringBuilder result =
+                new StringBuilder();
+
+        java.util.Map<String, Integer> variables =
+                new java.util.LinkedHashMap<>();
+
+
+        String[] lines =
+                code.split(
+                        "\\R",
+                        -1
+                );
+
+
+        /*
+         * First collect integer variables.
+         */
+        for (String originalLine : lines) {
+
+            String line =
+                    removeComment(
+                            originalLine
+                    ).trim();
+
+
+            java.util.regex.Matcher declaration =
+                    java.util.regex.Pattern.compile(
+                            "\\b(?:int|long|short|byte)\\s+"
+                                    + "([A-Za-z_$][A-Za-z0-9_$]*)"
+                                    + "\\s*=\\s*(-?\\d+)"
+                    ).matcher(line);
+
+
+            if (declaration.find()) {
+
+                variables.put(
+                        declaration.group(1),
+                        Integer.parseInt(
+                                declaration.group(2)
+                        )
+                );
+            }
+
+
+            java.util.regex.Matcher assignment =
+                    java.util.regex.Pattern.compile(
+                            "^([A-Za-z_$][A-Za-z0-9_$]*)"
+                                    + "\\s*=\\s*(-?\\d+)\\s*;?$"
+                    ).matcher(line);
+
+
+            if (assignment.find()) {
+
+                variables.put(
+                        assignment.group(1),
+                        Integer.parseInt(
+                                assignment.group(2)
+                        )
+                );
+            }
+        }
+
+
+        /*
+         * Then check conditions.
+         */
+        for (int i = 0; i < lines.length; i++) {
+
+            String line =
+                    removeComment(
+                            lines[i]
+                    ).trim();
+
+
+            java.util.regex.Matcher conditionMatcher =
+                    java.util.regex.Pattern.compile(
+                            "\\b(?:if|while|for)\\s*\\(([^)]*)\\)"
+                    ).matcher(line);
+
+
+            if (!conditionMatcher.find()) {
+                continue;
+            }
+
+
+            String condition =
+                    conditionMatcher.group(1).trim();
+
+
+            java.util.regex.Matcher comparison =
+                    java.util.regex.Pattern.compile(
+                            "^([A-Za-z_$][A-Za-z0-9_$]*)"
+                                    + "\\s*(<=|>=|==|!=|<|>)"
+                                    + "\\s*(-?\\d+)$"
+                    ).matcher(condition);
+
+
+            if (!comparison.find()) {
+                continue;
+            }
+
+
+            String variable =
+                    comparison.group(1);
+
+            String operator =
+                    comparison.group(2);
+
+            int right =
+                    Integer.parseInt(
+                            comparison.group(3)
+                    );
+
+
+            if (!variables.containsKey(variable)) {
+                continue;
+            }
+
+
+            int left =
+                    variables.get(variable);
+
+
+            boolean conditionResult =
+                    evaluate(
+                            left,
+                            operator,
+                            right
+                    );
+
+
+            if (!conditionResult) {
+
+                result.append(
+                        "\nLogical Error Detected!\n"
+                );
+
+                result.append(
+                        "----------------------------------------\n"
+                );
+
+                result.append(
+                        "Error Type: "
+                                + "Impossible Relational Condition\n"
+                );
+
+                result.append(
+                        "Line: "
+                                + (i + 1)
+                                + "\n"
+                );
+
+                result.append(
+                        "Condition: "
+                                + condition
+                                + "\n"
+                );
+
+                result.append(
+                        "Condition '"
+                                + condition
+                                + "' is false for the known variable values.\n"
+                );
+            }
+        }
+
+
+        if (result.length() == 0) {
+
+            result.append(
+                    "No logical errors detected.\n"
+            );
+        }
+
+
+        return result.toString();
+    }
+
+
+    /*
+     * ==========================================================
+     * REPAIR COMMON SYNTAX ERRORS
+     * ==========================================================
+     */
     private static String repairCommonSyntaxErrors(
             String code) {
 
@@ -453,24 +763,15 @@ public class AnalysisServer {
                         -1
                 );
 
-
         List<String> repaired =
                 new ArrayList<>();
 
 
-        for (int i = 0; i < lines.length; i++) {
-
-            String line =
-                    lines[i];
-
+        for (String line : lines) {
 
             String trimmed =
                     line.trim();
 
-
-            // --------------------------------------------------
-            // Keep empty lines unchanged
-            // --------------------------------------------------
 
             if (trimmed.isEmpty()) {
 
@@ -480,10 +781,9 @@ public class AnalysisServer {
             }
 
 
-            // --------------------------------------------------
-            // Do not modify structural lines
-            // --------------------------------------------------
-
+            /*
+             * Comments and structural lines.
+             */
             if (trimmed.startsWith("//")
                     || trimmed.startsWith("/*")
                     || trimmed.startsWith("*")
@@ -491,8 +791,7 @@ public class AnalysisServer {
                     || trimmed.equals("{")
                     || trimmed.equals("}")
                     || trimmed.endsWith("{")
-                    || trimmed.endsWith("}")
-                    || trimmed.endsWith(";")) {
+                    || trimmed.endsWith("}")) {
 
                 repaired.add(line);
 
@@ -500,10 +799,10 @@ public class AnalysisServer {
             }
 
 
-            // --------------------------------------------------
-            // Do not modify control statements
-            // --------------------------------------------------
-
+            /*
+             * Control statements should not receive
+             * an automatic semicolon.
+             */
             if (trimmed.startsWith("if ")
                     || trimmed.startsWith("if(")
                     || trimmed.startsWith("if (")
@@ -516,11 +815,9 @@ public class AnalysisServer {
                     || trimmed.startsWith("switch ")
                     || trimmed.startsWith("switch(")
                     || trimmed.startsWith("switch (")
-                    || trimmed.startsWith("catch ")
-                    || trimmed.startsWith("catch(")
-                    || trimmed.startsWith("catch (")
                     || trimmed.startsWith("else")
                     || trimmed.startsWith("try")
+                    || trimmed.startsWith("catch")
                     || trimmed.startsWith("finally")) {
 
                 repaired.add(line);
@@ -529,10 +826,20 @@ public class AnalysisServer {
             }
 
 
-            // --------------------------------------------------
-            // Add missing semicolon to simple declarations
-            // --------------------------------------------------
+            /*
+             * Already has semicolon.
+             */
+            if (trimmed.endsWith(";")) {
 
+                repaired.add(line);
+
+                continue;
+            }
+
+
+            /*
+             * Variable declaration.
+             */
             if (looksLikeVariableDeclaration(trimmed)) {
 
                 repaired.add(
@@ -543,10 +850,9 @@ public class AnalysisServer {
             }
 
 
-            // --------------------------------------------------
-            // Add missing semicolon to simple assignments
-            // --------------------------------------------------
-
+            /*
+             * Simple assignment.
+             */
             if (looksLikeSimpleAssignment(trimmed)) {
 
                 repaired.add(
@@ -557,12 +863,10 @@ public class AnalysisServer {
             }
 
 
-            // --------------------------------------------------
-            // Add missing semicolon to return statements
-            // --------------------------------------------------
-
-            if (trimmed.startsWith("return ")
-                    && !trimmed.endsWith(";")) {
+            /*
+             * return statement.
+             */
+            if (trimmed.startsWith("return ")) {
 
                 repaired.add(
                         line + ";"
@@ -572,10 +876,9 @@ public class AnalysisServer {
             }
 
 
-            // --------------------------------------------------
-            // Add missing semicolon to break/continue
-            // --------------------------------------------------
-
+            /*
+             * break / continue.
+             */
             if (trimmed.equals("break")
                     || trimmed.equals("continue")) {
 
@@ -586,10 +889,6 @@ public class AnalysisServer {
                 continue;
             }
 
-
-            // --------------------------------------------------
-            // Otherwise leave line unchanged
-            // --------------------------------------------------
 
             repaired.add(line);
         }
@@ -602,10 +901,11 @@ public class AnalysisServer {
     }
 
 
-    // ==========================================================
-    // CHECK VARIABLE DECLARATION
-    // ==========================================================
-
+    /*
+     * ==========================================================
+     * VARIABLE DECLARATION CHECK
+     * ==========================================================
+     */
     private static boolean looksLikeVariableDeclaration(
             String line) {
 
@@ -618,16 +918,18 @@ public class AnalysisServer {
     }
 
 
-    // ==========================================================
-    // CHECK SIMPLE ASSIGNMENT
-    // ==========================================================
-
+    /*
+     * ==========================================================
+     * SIMPLE ASSIGNMENT CHECK
+     * ==========================================================
+     */
     private static boolean looksLikeSimpleAssignment(
             String line) {
 
         if (!line.contains("=")) {
             return false;
         }
+
 
         if (line.contains("==")
                 || line.contains(">=")
@@ -639,146 +941,172 @@ public class AnalysisServer {
             return false;
         }
 
+
         return line.matches(
-                "^[A-Za-z_$][A-Za-z0-9_$]*\\s*="
-                        + "\\s*[^;]+$"
+                "^[A-Za-z_$][A-Za-z0-9_$]*\\s*=\\s*[^;]+$"
         );
     }
 
 
-    // ==========================================================
-    // FORMAT SYNTAX ERROR
-    // ==========================================================
+    /*
+     * ==========================================================
+     * INTEGER CONDITION EVALUATION
+     * ==========================================================
+     */
+    private static boolean evaluate(
+            int left,
+            String operator,
+            int right) {
 
-    private static String formatSyntaxError(
-            String message,
-            String code) {
+        switch (operator) {
+
+            case "<":
+                return left < right;
+
+            case ">":
+                return left > right;
+
+            case "<=":
+                return left <= right;
+
+            case ">=":
+                return left >= right;
+
+            case "==":
+                return left == right;
+
+            case "!=":
+                return left != right;
+
+            default:
+                return true;
+        }
+    }
+
+
+    /*
+     * ==========================================================
+     * REMOVE SINGLE-LINE COMMENTS
+     * ==========================================================
+     */
+    private static String removeComment(
+            String line) {
+
+        int index =
+                line.indexOf("//");
+
+
+        if (index >= 0) {
+
+            return line.substring(
+                    0,
+                    index
+            );
+        }
+
+
+        return line;
+    }
+
+
+    /*
+     * ==========================================================
+     * FORMAT JAVAPARSER PROBLEM
+     * ==========================================================
+     */
+    private static String formatProblem(
+            Problem problem) {
+
+        String message =
+                problem.getMessage();
+
 
         StringBuilder result =
                 new StringBuilder();
 
 
-        int lineNumber =
-                findSyntaxErrorLine(
-                        message
-                );
+        if (problem.getLocation().isPresent()) {
+
+            var location =
+                    problem.getLocation().get();
 
 
-        if (lineNumber > 0) {
+            int line =
+        	   location.getBegin().getRange().get().begin.line;
+
+	    int column =
+        	   location.getBegin().getRange().get().begin.column;
+
 
             result.append(
                     "Line "
-                            + lineNumber
+                            + line
+                            + ", Column "
+                            + column
                             + ": "
-            );
-
-        } else {
-
-            result.append(
-                    "Syntax Error: "
             );
         }
 
 
         result.append(
-                cleanSyntaxMessage(message)
+                message
         );
+
+
+        result.append("\n");
 
 
         return result.toString();
     }
 
 
-    // ==========================================================
-    // FIND LINE NUMBER FROM JAVAPARSER MESSAGE
-    // ==========================================================
+    /*
+     * ==========================================================
+     * FORMAT EXCEPTION
+     * ==========================================================
+     */
+    private static String formatException(
+            Exception exception) {
 
-    private static int findSyntaxErrorLine(
-            String message) {
+        String message =
+                exception.getMessage();
 
-        if (message == null) {
-            return -1;
-        }
-
-
-        /*
-         * JavaParser messages commonly contain:
-         *
-         * line 7, column 18
-         *
-         * or:
-         *
-         * (line 7,col 18)
-         */
-
-        java.util.regex.Pattern pattern =
-                java.util.regex.Pattern.compile(
-                        "(?:line\\s+|line\\s*\\()"
-                                + "(\\d+)",
-                        java.util.regex.Pattern.CASE_INSENSITIVE
-                );
-
-
-        java.util.regex.Matcher matcher =
-                pattern.matcher(message);
-
-
-        if (matcher.find()) {
-
-            try {
-
-                return Integer.parseInt(
-                        matcher.group(1)
-                );
-
-            } catch (NumberFormatException ignored) {
-            }
-        }
-
-
-        return -1;
-    }
-
-
-    // ==========================================================
-    // CLEAN SYNTAX MESSAGE
-    // ==========================================================
-
-    private static String cleanSyntaxMessage(
-            String message) {
 
         if (message == null
                 || message.trim().isEmpty()) {
 
-            return "Java syntax error detected.";
+            return "Java syntax error detected.\n";
         }
 
 
-        String cleaned =
-                message.replace(
-                        "\n",
-                        " "
-                ).trim();
-
-
-        if (cleaned.length() > 500) {
-
-            cleaned =
-                    cleaned.substring(
-                            0,
-                            500
-                    );
-        }
-
-
-        return cleaned;
+        return message + "\n";
     }
 
 
-    // ==========================================================
-    // READ REQUEST BODY
-    // ==========================================================
+    /*
+     * ==========================================================
+     * CLEAN LOGICAL RESULT
+     * ==========================================================
+     */
+    private static String cleanLogicalResult(
+            String result) {
 
+        if (result == null
+                || result.trim().isEmpty()) {
+
+            return "No logical errors detected.\n";
+        }
+
+
+        return result;
+    }
+
+
+    /*
+     * ==========================================================
+     * READ REQUEST BODY
+     * ==========================================================
+     */
     private static String readRequestBody(
             InputStream inputStream)
             throws IOException {
@@ -811,10 +1139,11 @@ public class AnalysisServer {
     }
 
 
-    // ==========================================================
-    // CORS HEADERS
-    // ==========================================================
-
+    /*
+     * ==========================================================
+     * CORS
+     * ==========================================================
+     */
     private static void addCorsHeaders(
             HttpExchange exchange) {
 
@@ -847,10 +1176,11 @@ public class AnalysisServer {
     }
 
 
-    // ==========================================================
-    // SEND RESPONSE
-    // ==========================================================
-
+    /*
+     * ==========================================================
+     * SEND RESPONSE
+     * ==========================================================
+     */
     private static void sendResponse(
             HttpExchange exchange,
             int statusCode,
