@@ -1,4 +1,5 @@
 async function analyzeCode() {
+
     const code = document.getElementById("codeInput").value;
     const resultBox = document.getElementById("resultBox");
     const button = document.getElementById("analyzeButton");
@@ -26,6 +27,7 @@ async function analyzeCode() {
     `;
 
     try {
+
         const response = await fetch(
             "https://logical-error-detector-backend.onrender.com/analyze",
             {
@@ -43,30 +45,38 @@ async function analyzeCode() {
             throw new Error(result);
         }
 
+        /*
+         * Detect syntax errors.
+         */
         const hasSyntaxErrors =
-    	   /SYNTAX ANALYSIS[\s\S]*?Syntax errors detected!/i.test(result) &&
-    	   !/SYNTAX ANALYSIS[\s\S]*?✓\s*No syntax errors found/i.test(result);
+            /syntax\s+errors?\s+detected/i.test(result) ||
+            /syntax\s+error\s+details/i.test(result) ||
+            /parse\s+error/i.test(result);
 
+        /*
+         * Detect logical errors.
+         */
         const hasLogicalErrors =
             /logical\s+errors?\s+detected/i.test(result) ||
             /logical\s+error\s+detected!/i.test(result) ||
-            /error\s+type:/i.test(result);
+            /error\s+type:\s*/i.test(result);
 
         /*
          * IMPORTANT:
-         * Do NOT return immediately when syntax errors exist.
-         *
-         * The backend is now capable of detecting both syntax
-         * and logical errors.
+         * Always display BOTH when either exists.
          */
         if (hasSyntaxErrors || hasLogicalErrors) {
+
             displayCombinedResult(
                 result,
                 hasSyntaxErrors,
                 hasLogicalErrors
             );
+
         } else {
+
             displaySuccessResult(result);
+
         }
 
     } catch (error) {
@@ -99,6 +109,7 @@ async function analyzeCode() {
 
         button.disabled = false;
         button.textContent = "Analyze Code";
+
     }
 }
 
