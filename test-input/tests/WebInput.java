@@ -1,43 +1,28 @@
-public class LargeTestProgram {
+public class WebInput {
 
     public static void main(String[] args) {
 
-        int age = 25;
-        int marks = 45;
-        int salary = 30000;
-        int experience = 5;
-        int temperature = 30;
+        int x = 5;
+        int y = 0;
 
-        if (age < 10) {
-            System.out.println("Child");
+        // 1. Impossible loop condition
+        while (x > 10) {
+            System.out.println("This loop cannot execute.");
         }
 
-        if (marks > 90) {
-            System.out.println("Excellent");
+        // 2. Division by zero
+        int result = x / y;
+
+        // 3. Constant condition
+        if (10 > 20) {
+            System.out.println("This condition is always false.");
         }
 
-        if (salary > 20000) {
-            System.out.println("Good Salary");
+        // 4. Potential infinite loop
+        while (true) {
+            System.out.println("Potential infinite loop.");
+            break;
         }
-
-        if (experience > 10) {
-            System.out.println("Experienced");
-        }
-
-        if (temperature < 20) {
-            System.out.println("Cold");
-        }
-
-        if (age > 18) {
-            System.out.println("Adult");
-        }
-
-        if (marks < 50) {
-            System.out.println("Pass");
-        }
-
-        System.out.println("Analysis completed");
 
     }
-
 }

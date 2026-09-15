@@ -9,288 +9,299 @@ import com.microsoft.z3.*;
 import java.util.Map;
 
 public class Z3ConstraintAnalyzer {
+private final Context context;
 
-    private final Context context;
+public Z3ConstraintAnalyzer() {
+    context = new Context();
+}
 
-    public Z3ConstraintAnalyzer() {
-        context = new Context();
+// --------------------------------------------------
+// Backward-compatible simple constraint analysis
+// --------------------------------------------------
+
+public boolean isSatisfiable(
+        int variableValue,
+        String operator,
+        int comparisonValue) {
+
+    Solver solver = context.mkSolver();
+
+    IntExpr x = context.mkIntConst("x");
+
+    BoolExpr variableConstraint =
+            context.mkEq(
+                    x,
+                    context.mkInt(variableValue)
+            );
+
+    BoolExpr condition;
+
+    switch (operator) {
+
+        case ">":
+            condition = context.mkGt(
+                    x,
+                    context.mkInt(comparisonValue));
+            break;
+
+        case ">=":
+            condition = context.mkGe(
+                    x,
+                    context.mkInt(comparisonValue));
+            break;
+
+        case "<":
+            condition = context.mkLt(
+                    x,
+                    context.mkInt(comparisonValue));
+            break;
+
+        case "<=":
+            condition = context.mkLe(
+                    x,
+                    context.mkInt(comparisonValue));
+            break;
+
+        case "==":
+            condition = context.mkEq(
+                    x,
+                    context.mkInt(comparisonValue));
+            break;
+
+        case "!=":
+            condition = context.mkDistinct(
+                    x,
+                    context.mkInt(comparisonValue));
+            break;
+
+        default:
+            throw new IllegalArgumentException(
+                    "Unsupported operator: " + operator
+            );
     }
 
-    // --------------------------------------------------
-    // Backward-compatible simple constraint analysis
-    // --------------------------------------------------
+    solver.add(variableConstraint);
+    solver.add(condition);
 
-    public boolean isSatisfiable(
-            int variableValue,
-            String operator,
-            int comparisonValue) {
+    Status result = solver.check();
 
-        Solver solver = context.mkSolver();
+    System.out.println("Z3 Solver Result: " + result);
 
-        IntExpr x =
-                context.mkIntConst("x");
+    return result == Status.SATISFIABLE;
+}
 
-        BoolExpr variableConstraint =
-                context.mkEq(
-                        x,
-                        context.mkInt(variableValue)
-                );
+// --------------------------------------------------
+// Analyze complete JavaParser expression using Z3
+// --------------------------------------------------
 
-        BoolExpr condition;
+public boolean isSatisfiable(
+        Expression expression,
+        Map<String, Integer> variables) {
 
-        switch (operator) {
+    Solver solver = context.mkSolver();
 
-            case ">":
-                condition =
-                        context.mkGt(
-                                x,
-                                context.mkInt(comparisonValue)
-                        );
-                break;
+    BoolExpr constraint =
+            buildConstraint(expression, variables);
 
-            case ">=":
-                condition =
-                        context.mkGe(
-                                x,
-                                context.mkInt(comparisonValue)
-                        );
-                break;
+    solver.add(constraint);
 
-            case "<":
-                condition =
-                        context.mkLt(
-                                x,
-                                context.mkInt(comparisonValue)
-                        );
-                break;
+    Status result = solver.check();
 
-            case "<=":
-                condition =
-                        context.mkLe(
-                                x,
-                                context.mkInt(comparisonValue)
-                        );
-                break;
+    System.out.println("Z3 Solver Result: " + result);
 
-            case "==":
-                condition =
-                        context.mkEq(
-                                x,
-                                context.mkInt(comparisonValue)
-                        );
-                break;
+    return result == Status.SATISFIABLE;
+}
 
-            case "!=":
-                condition =
-                        context.mkDistinct(
-                                x,
-                                context.mkInt(comparisonValue)
-                        );
-                break;
+// --------------------------------------------------
+// Build Z3 constraint
+// --------------------------------------------------
+
+private BoolExpr buildConstraint(
+        Expression expression,
+        Map<String, Integer> variables) {
+
+    if (expression instanceof BinaryExpr) {
+
+        BinaryExpr binary =
+                (BinaryExpr) expression;
+
+        // --------------------------------------------------
+        // Logical AND
+        // --------------------------------------------------
+
+        if (binary.getOperator()
+                == BinaryExpr.Operator.AND) {
+
+            BoolExpr left =
+                    buildConstraint(
+                            binary.getLeft(),
+                            variables);
+
+            BoolExpr right =
+                    buildConstraint(
+                            binary.getRight(),
+                            variables);
+
+            return context.mkAnd(left, right);
+        }
+
+        // --------------------------------------------------
+        // Logical OR
+        // --------------------------------------------------
+
+        if (binary.getOperator()
+                == BinaryExpr.Operator.OR) {
+
+            BoolExpr left =
+                    buildConstraint(
+                            binary.getLeft(),
+                            variables);
+
+            BoolExpr right =
+                    buildConstraint(
+                            binary.getRight(),
+                            variables);
+
+            return context.mkOr(left, right);
+        }
+
+        // --------------------------------------------------
+        // Normal comparison
+        // --------------------------------------------------
+
+        ArithExpr left =
+                getValue(
+                        binary.getLeft(),
+                        variables);
+
+        ArithExpr right =
+                getValue(
+                        binary.getRight(),
+                        variables);
+
+        if (left == null || right == null) {
+            return context.mkTrue();
+        }
+
+        switch (binary.getOperator()) {
+
+            case GREATER:
+                return context.mkGt(left, right);
+
+            case GREATER_EQUALS:
+                return context.mkGe(left, right);
+
+            case LESS:
+                return context.mkLt(left, right);
+
+            case LESS_EQUALS:
+                return context.mkLe(left, right);
+
+            case EQUALS:
+                return context.mkEq(left, right);
+
+            case NOT_EQUALS:
+                return context.mkDistinct(left, right);
 
             default:
-                throw new IllegalArgumentException(
-                        "Unsupported operator: " + operator
-                );
-        }
-
-        solver.add(variableConstraint);
-        solver.add(condition);
-
-        Status result =
-                solver.check();
-	System.out.println("Z3 Solver Result: " + result);
-
-        return result == Status.SATISFIABLE;
-    }
-
-    // --------------------------------------------------
-    // Analyze a complete JavaParser expression using Z3
-    // --------------------------------------------------
-
-    public boolean isSatisfiable(
-            Expression expression,
-            Map<String, Integer> variables) {
-
-        Solver solver = context.mkSolver();
-
-        BoolExpr constraint =
-                buildConstraint(
-                        expression,
-                        variables
-                );
-
-        solver.add(constraint);
-
-        Status result =
-                solver.check();
-
-        return result == Status.SATISFIABLE;
-    }
-
-    // --------------------------------------------------
-    // Build Z3 constraint
-    // --------------------------------------------------
-
-    private BoolExpr buildConstraint(
-            Expression expression,
-            Map<String, Integer> variables) {
-
-        // --------------------------------------------------
-        // Binary expression
-        // --------------------------------------------------
-
-        if (expression instanceof BinaryExpr) {
-
-            BinaryExpr binary =
-                    (BinaryExpr) expression;
-
-            // --------------------------------------------------
-            // AND
-            // --------------------------------------------------
-
-            if (binary.getOperator()
-                    == BinaryExpr.Operator.AND) {
-
-                BoolExpr left =
-                        buildConstraint(
-                                binary.getLeft(),
-                                variables
-                        );
-
-                BoolExpr right =
-                        buildConstraint(
-                                binary.getRight(),
-                                variables
-                        );
-
-                return context.mkAnd(left, right);
-            }
-
-            // --------------------------------------------------
-            // OR
-            // --------------------------------------------------
-
-            if (binary.getOperator()
-                    == BinaryExpr.Operator.OR) {
-
-                BoolExpr left =
-                        buildConstraint(
-                                binary.getLeft(),
-                                variables
-                        );
-
-                BoolExpr right =
-                        buildConstraint(
-                                binary.getRight(),
-                                variables
-                        );
-
-                return context.mkOr(left, right);
-            }
-
-            // --------------------------------------------------
-            // Normal comparison
-            // --------------------------------------------------
-
-            ArithExpr left =
-                    getValue(
-                            binary.getLeft(),
-                            variables
-                    );
-
-            ArithExpr right =
-                    getValue(
-                            binary.getRight(),
-                            variables
-                    );
-
-            // Unknown values cannot be analyzed yet
-            if (left == null || right == null) {
                 return context.mkTrue();
-            }
-
-            switch (binary.getOperator()) {
-
-                case GREATER:
-                    return context.mkGt(left, right);
-
-                case GREATER_EQUALS:
-                    return context.mkGe(left, right);
-
-                case LESS:
-                    return context.mkLt(left, right);
-
-                case LESS_EQUALS:
-                    return context.mkLe(left, right);
-
-                case EQUALS:
-                    return context.mkEq(left, right);
-
-                case NOT_EQUALS:
-                    return context.mkDistinct(left, right);
-
-                default:
-                    return context.mkTrue();
-            }
         }
+    }
 
-        // --------------------------------------------------
-        // Unknown expression
-        // --------------------------------------------------
+    return context.mkTrue();
+}
 
-        return context.mkTrue();
+// --------------------------------------------------
+// Convert Java expression into Z3 integer expression
+// --------------------------------------------------
+
+private ArithExpr getValue(
+        Expression expression,
+        Map<String, Integer> variables) {
+
+    // --------------------------------------------------
+    // Integer literal
+    // --------------------------------------------------
+
+    if (expression instanceof IntegerLiteralExpr) {
+
+        int value =
+                Integer.parseInt(
+                        expression.toString());
+
+        return context.mkInt(value);
     }
 
     // --------------------------------------------------
-    // Convert Java expression into Z3 integer expression
+    // Variable
     // --------------------------------------------------
 
-    private ArithExpr getValue(
-            Expression expression,
-            Map<String, Integer> variables) {
+    if (expression instanceof NameExpr) {
 
-        // --------------------------------------------------
-        // Integer literal
-        // --------------------------------------------------
+        String variableName =
+                expression.toString();
 
-        if (expression instanceof IntegerLiteralExpr) {
+        Integer value =
+                variables.get(variableName);
 
-            int value =
-                    Integer.parseInt(
-                            expression.toString()
-                    );
-
-            return context.mkInt(value);
+        if (value == null) {
+            return null;
         }
 
-        // --------------------------------------------------
-        // Variable
-        // --------------------------------------------------
+        return context.mkInt(value);
+    }
 
-        if (expression instanceof NameExpr) {
+    // --------------------------------------------------
+    // Arithmetic expression
+    // Supports +, -, *, /
+    // --------------------------------------------------
 
-            String variableName =
-                    expression.toString();
+    if (expression instanceof BinaryExpr) {
 
-            Integer value =
-                    variables.get(variableName);
+        BinaryExpr binary =
+                (BinaryExpr) expression;
 
-            if (value == null) {
+        ArithExpr left =
+                getValue(
+                        binary.getLeft(),
+                        variables);
+
+        ArithExpr right =
+                getValue(
+                        binary.getRight(),
+                        variables);
+
+        if (left == null || right == null) {
+            return null;
+        }
+
+        switch (binary.getOperator()) {
+
+            case PLUS:
+                return context.mkAdd(left, right);
+
+            case MINUS:
+                return context.mkSub(left, right);
+
+            case MULTIPLY:
+                return context.mkMul(left, right);
+
+            case DIVIDE:
+                return context.mkDiv(left, right);
+
+            default:
                 return null;
-            }
-
-            return context.mkInt(value);
         }
-
-        return null;
     }
 
-    // --------------------------------------------------
-    // Close Z3 context
-    // --------------------------------------------------
+    return null;
+}
 
-    public void close() {
-        context.close();
-    }
+// --------------------------------------------------
+// Close Z3 context
+// --------------------------------------------------
+
+public void close() {
+    context.close();
+}
 }
