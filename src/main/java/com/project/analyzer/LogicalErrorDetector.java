@@ -1,11 +1,27 @@
 package com.project.analyzer;
 
-import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParseProblemException;
+import com.github.javaparser.StaticJavaParser;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.body.VariableDeclarator;
+import com.github.javaparser.ast.expr.AssignExpr;
+import com.github.javaparser.ast.expr.BinaryExpr;
+import com.github.javaparser.ast.expr.Expression;
+import com.github.javaparser.ast.expr.IntegerLiteralExpr;
+import com.github.javaparser.ast.expr.NameExpr;
+import com.github.javaparser.ast.stmt.BlockStmt;
+import com.github.javaparser.ast.stmt.ForStmt;
+import com.github.javaparser.ast.stmt.IfStmt;
+import com.github.javaparser.ast.stmt.Statement;
+import com.github.javaparser.ast.stmt.WhileStmt;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -13,68 +29,54 @@ import java.util.regex.Pattern;
 
 public class LogicalErrorDetector {
 
-    private static final Path INPUT_FILE =
-            Path.of("test-input/tests/WebInput.java");
-
-    private static final Map<String, Integer> variables =
-            new LinkedHashMap<>();
-
-    private static final Set<String> initializedVariables =
-            new LinkedHashSet<>();
-
-    private static final Set<String> assignedVariables =
-            new LinkedHashSet<>();
-
-    private static final Z3ConstraintAnalyzer z3Analyzer =
-            new Z3ConstraintAnalyzer();
+    private static final String INPUT_FILE =
+            "test-input/tests/WebInput.java";
 
     private static final Set<String> reportedErrors =
-            new LinkedHashSet<>();
+            new HashSet<>();
+
+    private static final Map<String, Integer> variables =
+            new HashMap<>();
+
+    private static final Set<String> initializedVariables =
+            new HashSet<>();
 
     public static void main(String[] args) {
 
         System.out.println("========================================");
-        System.out.println("       STATIC ANALYSIS TOOL");
+        System.out.println("        STATIC ANALYSIS TOOL");
         System.out.println("========================================");
-        System.out.println();
-
         System.out.println("File: " + INPUT_FILE);
         System.out.println();
 
-        if (!Files.exists(INPUT_FILE)) {
-            System.out.println("ERROR: Input Java file not found.");
+        reportedErrors.clear();
+        variables.clear();
+        initializedVariables.clear();
+
+        Path file = Path.of(INPUT_FILE);
+
+        if (!Files.exists(file)) {
+            System.out.println("ERROR: Input file not found.");
+            System.out.println("Expected file: " + INPUT_FILE);
             return;
         }
 
         String source;
 
         try {
-            source = Files.readString(INPUT_FILE);
-        } catch (Exception e) {
-            System.out.println("ERROR: Could not read Java file.");
+            source = Files.readString(file);
+        } catch (IOException e) {
+            System.out.println("ERROR: Unable to read input file.");
             System.out.println(e.getMessage());
             return;
         }
 
-        boolean syntaxError = performSyntaxAnalysis(source);
+        boolean syntaxError =
+                analyzeSyntax(source);
 
-        variables.clear();
-        initializedVariables.clear();
-        assignedVariables.clear();
-        reportedErrors.clear();
-
-        System.out.println("LOGICAL ANALYSIS");
-        System.out.println("----------------------------------------");
-
-        analyzeVariables(source);
-        analyzeConditions(source);
-        analyzeDivisionByZero(source);
-        analyzeConstantConditions(source);
-        analyzeInfiniteLoops(source);
-	analyzeMissingLoopUpdate(source);
-        analyzeUnreachableCode(source);
-        analyzeUninitializedVariables(source);
-        analyzeDeadAssignments(source);
+        if (!syntaxError) {
+            analyzeLogicalErrors(source);
+        }
 
         printFinalReport(syntaxError);
     }
@@ -83,66 +85,89 @@ public class LogicalErrorDetector {
     // SYNTAX ANALYSIS
     // =====================================================
 
-    private static boolean performSyntaxAnalysis(String source) {
+    private static boolean analyzeSyntax(String source) {
 
         System.out.println("SYNTAX ANALYSIS");
         System.out.println("----------------------------------------");
 
-        boolean syntaxError = false;
-
         try {
+            StaticJavaParser.parse(source);
 
-            JavaParser parser = new JavaParser();
+            System.out.println("✓ No syntax errors found.");
+            System.out.println();
 
-            var parseResult = parser.parse(source);
+            return false;
 
-            if (!parseResult.getProblems().isEmpty()) {
+        } catch (ParseProblemException e) {
 
-                syntaxError = true;
+            System.out.println("✗ Syntax errors detected.");
 
-                System.out.println("✗ Syntax errors detected!");
-                System.out.println();
-                System.out.println("Syntax Error Details:");
-                System.out.println("----------------------------------------");
+            String message = e.getMessage();
 
-                parseResult.getProblems().forEach(
-                        problem -> System.out.println(problem)
-                );
-
-                System.out.println();
-
-            } else {
-
-                System.out.println("✓ No syntax errors found.");
-                System.out.println();
+            if (message != null) {
+                System.out.println(message);
             }
 
-        } catch (Exception e) {
-
-            syntaxError = true;
-
-            System.out.println("✗ Syntax errors detected!");
             System.out.println();
-            System.out.println("Syntax Error Details:");
-            System.out.println("----------------------------------------");
-            System.out.println(e.getMessage());
-            System.out.println();
+
+            return true;
         }
-
-        return syntaxError;
     }
 
     // =====================================================
-    // VARIABLE ANALYSIS
+    // LOGICAL ANALYSIS
     // =====================================================
 
-    private static void analyzeVariables(String source) {
+    private static void analyzeLogicalErrors(String source) {
+
+        System.out.println("LOGICAL ANALYSIS");
+        System.out.println("----------------------------------------");
+
+        analyzeDataFlow(source);
+
+        analyzeControlFlow(source);
+
+        analyzeDivisionByZero(source);
+
+        analyzeConstantConditions(source);
+
+        analyzeInfiniteLoops(source);
+
+        analyzeMissingLoopUpdates(source);
+
+        analyzeUnreachableCode(source);
+
+        analyzeUninitializedVariables(source);
+
+        analyzeDeadAssignments(source);
+    }
+
+    // =====================================================
+    // PROGRAM-ORDER DATA-FLOW ANALYSIS
+    // =====================================================
+
+    private static void analyzeDataFlow(String source) {
+
+        System.out.println("PROGRAM-ORDER DATA-FLOW ANALYSIS");
+        System.out.println("----------------------------------------");
+
+        variables.clear();
+        initializedVariables.clear();
 
         String[] lines = source.split("\\R", -1);
 
-        System.out.println();
-        System.out.println("PROGRAM-ORDER DATA-FLOW ANALYSIS");
-        System.out.println("----------------------------------------");
+        Pattern declarationPattern =
+                Pattern.compile(
+                        "\\b(?:int|long|short|byte|double|float)\\s+"
+                                + "([A-Za-z_$][A-Za-z0-9_$]*)"
+                                + "\\s*(?:=\\s*(.*?))?\\s*;"
+                );
+
+        Pattern assignmentPattern =
+                Pattern.compile(
+                        "^\\s*([A-Za-z_$][A-Za-z0-9_$]*)"
+                                + "\\s*=\\s*(.+?)\\s*;"
+                );
 
         for (int i = 0; i < lines.length; i++) {
 
@@ -152,479 +177,320 @@ public class LogicalErrorDetector {
                 continue;
             }
 
-            Pattern declarationPattern =
-                    Pattern.compile(
-                            "\\b(?:int|long|short|byte)\\s+"
-                                    + "([A-Za-z_$][A-Za-z0-9_$]*)"
-                                    + "\\s*=\\s*(.+?)\\s*;?$"
-                    );
-
-            Matcher declaration =
+            Matcher declarationMatcher =
                     declarationPattern.matcher(line);
 
-            if (declaration.find()) {
+            if (declarationMatcher.find()) {
 
-                String variable = declaration.group(1);
-                String expression = declaration.group(2).trim();
+                String variableName =
+                        declarationMatcher.group(1);
+
+                String initializer =
+                        declarationMatcher.group(2);
+
+                if (initializer != null) {
+
+                    initializer = initializer.trim();
+
+                    Integer value =
+                            evaluateIntegerExpression(
+                                    initializer
+                            );
+
+                    if (value != null) {
+
+                        variables.put(
+                                variableName,
+                                value
+                        );
+
+                        initializedVariables.add(
+                                variableName
+                        );
+
+                        System.out.println(
+                                "Line " + (i + 1)
+                                        + ": Variable "
+                                        + variableName
+                                        + " = "
+                                        + value
+                        );
+
+                    } else {
+
+                        initializedVariables.add(
+                                variableName
+                        );
+
+                        System.out.println(
+                                "Line " + (i + 1)
+                                        + ": Variable "
+                                        + variableName
+                                        + " initialized with expression"
+                        );
+                    }
+
+                } else {
+
+                    System.out.println(
+                            "Line " + (i + 1)
+                                    + ": Variable "
+                                    + variableName
+                                    + " declared without initialization"
+                    );
+                }
+
+                continue;
+            }
+
+            Matcher assignmentMatcher =
+                    assignmentPattern.matcher(line);
+
+            if (assignmentMatcher.matches()) {
+
+                String variableName =
+                        assignmentMatcher.group(1);
+
+                String expression =
+                        assignmentMatcher.group(2).trim();
 
                 Integer value =
-                        evaluateArithmeticExpression(expression);
-
-                assignedVariables.add(variable);
+                        evaluateIntegerExpression(expression);
 
                 if (value != null) {
 
-                    variables.put(variable, value);
-                    initializedVariables.add(variable);
+                    variables.put(
+                            variableName,
+                            value
+                    );
+
+                    initializedVariables.add(
+                            variableName
+                    );
 
                     System.out.println(
-                            "Line "
-                                    + (i + 1)
+                            "Line " + (i + 1)
                                     + ": Variable "
-                                    + variable
-                                    + " = "
+                                    + variableName
+                                    + " updated to "
                                     + value
                     );
 
                 } else {
 
-                    System.out.println(
-                            "Line "
-                                    + (i + 1)
-                                    + ": Variable "
-                                    + variable
-                                    + " initialized with expression"
-                    );
-                }
-
-                continue;
-            }
-
-            Pattern simpleDeclarationPattern =
-                    Pattern.compile(
-                            "\\b(?:int|long|short|byte)\\s+"
-                                    + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*;"
+                    initializedVariables.add(
+                            variableName
                     );
 
-            Matcher simpleDeclaration =
-                    simpleDeclarationPattern.matcher(line);
-
-            if (simpleDeclaration.find()) {
-
-                String variable = simpleDeclaration.group(1);
-
-                assignedVariables.add(variable);
-
-                continue;
-            }
-
-            Pattern assignmentPattern =
-                    Pattern.compile(
-                            "^([A-Za-z_$][A-Za-z0-9_$]*)"
-                                    + "\\s*=\\s*(.+?)\\s*;?$"
-                    );
-
-            Matcher assignment =
-                    assignmentPattern.matcher(line);
-
-            if (assignment.find()) {
-
-                String variable = assignment.group(1);
-                String expression = assignment.group(2).trim();
-
-                Integer value =
-                        evaluateArithmeticExpression(expression);
-
-                assignedVariables.add(variable);
-
-                if (value != null) {
-
-                    variables.put(variable, value);
-                    initializedVariables.add(variable);
-
-                    System.out.println(
-                            "Line "
-                                    + (i + 1)
-                                    + ": Variable updated "
-                                    + variable
-                                    + " = "
-                                    + value
-                    );
+                    variables.remove(variableName);
                 }
             }
-        }
-
-        if (variables.isEmpty()) {
-            System.out.println("No integer variables found.");
         }
 
         System.out.println();
     }
 
     // =====================================================
-    // ARITHMETIC EVALUATION
+    // IF / ELSE / LOOP ANALYSIS
     // =====================================================
 
-    private static Integer evaluateArithmeticExpression(
-            String expression) {
-
-        expression = expression.trim();
-
-        while (expression.startsWith("(")
-                && expression.endsWith(")")) {
-
-            expression =
-                    expression.substring(
-                            1,
-                            expression.length() - 1
-                    ).trim();
-        }
-
-        if (expression.matches("-?\\d+")) {
-            return Integer.parseInt(expression);
-        }
-
-        if (expression.matches(
-                "[A-Za-z_$][A-Za-z0-9_$]*")) {
-
-            return variables.get(expression);
-        }
-
-        int parentheses = 0;
-
-        for (int i = expression.length() - 1;
-             i >= 0;
-             i--) {
-
-            char c = expression.charAt(i);
-
-            if (c == ')') {
-                parentheses++;
-            } else if (c == '(') {
-                parentheses--;
-            }
-
-            if (parentheses == 0
-                    && (c == '+' || c == '-')
-                    && i > 0) {
-
-                Integer left =
-                        evaluateArithmeticExpression(
-                                expression.substring(0, i)
-                        );
-
-                Integer right =
-                        evaluateArithmeticExpression(
-                                expression.substring(i + 1)
-                        );
-
-                if (left == null || right == null) {
-                    return null;
-                }
-
-                if (c == '+') {
-                    return left + right;
-                }
-
-                return left - right;
-            }
-        }
-
-        parentheses = 0;
-
-        for (int i = expression.length() - 1;
-             i >= 0;
-             i--) {
-
-            char c = expression.charAt(i);
-
-            if (c == ')') {
-                parentheses++;
-            } else if (c == '(') {
-                parentheses--;
-            }
-
-            if (parentheses == 0
-                    && (c == '*' || c == '/')) {
-
-                Integer left =
-                        evaluateArithmeticExpression(
-                                expression.substring(0, i)
-                        );
-
-                Integer right =
-                        evaluateArithmeticExpression(
-                                expression.substring(i + 1)
-                        );
-
-                if (left == null || right == null) {
-                    return null;
-                }
-
-                if (c == '*') {
-                    return left * right;
-                }
-
-                if (right == 0) {
-                    return null;
-                }
-
-                return left / right;
-            }
-        }
-
-        return null;
-    }
-
-    // =====================================================
-    // CONDITION ANALYSIS
-    // =====================================================
-
-    private static void analyzeConditions(String source) {
-
-        String[] lines = source.split("\\R", -1);
+    private static void analyzeControlFlow(String source) {
 
         System.out.println("IF / ELSE / LOOP ANALYSIS");
         System.out.println("----------------------------------------");
 
+        String[] lines = source.split("\\R", -1);
+
+        Pattern ifPattern =
+                Pattern.compile(
+                        "\\bif\\s*\\(([^)]*)\\)"
+                );
+
+        Pattern whilePattern =
+                Pattern.compile(
+                        "\\bwhile\\s*\\(([^)]*)\\)"
+                );
+
+        Pattern forPattern =
+                Pattern.compile(
+                        "\\bfor\\s*\\(([^)]*)\\)"
+                );
+
         for (int i = 0; i < lines.length; i++) {
 
-            String line = removeComment(lines[i]).trim();
+            String line =
+                    removeComment(lines[i]).trim();
 
-            if (line.isEmpty()) {
-                continue;
+            Matcher ifMatcher =
+                    ifPattern.matcher(line);
+
+           if (ifMatcher.find()) {
+
+    		System.out.println(
+           	  "IF at line "
+                    + (i + 1)
+                    + ": "
+                    + ifMatcher.group(1).trim()
+    	   );
+
+    	   analyzeImpossibleIfCondition(
+            i + 1,
+            ifMatcher.group(1).trim()
+   	 );
+  	}
+
+            Matcher whileMatcher =
+                    whilePattern.matcher(line);
+
+            if (whileMatcher.find()) {
+
+                String condition =
+                        whileMatcher.group(1).trim();
+
+                System.out.println(
+                        "WHILE at line "
+                                + (i + 1)
+                                + ": "
+                                + condition
+                );
+
+                analyzeImpossibleLoopCondition(
+                        i + 1,
+                        condition
+                );
             }
 
-            int lineNumber = i + 1;
+            Matcher forMatcher =
+                    forPattern.matcher(line);
 
-            analyzeIfCondition(line, lineNumber);
-            analyzeWhileCondition(line, lineNumber);
-            analyzeForCondition(line, lineNumber);
-            analyzeDoWhileCondition(line, lineNumber);
+            if (forMatcher.find()) {
+
+                System.out.println(
+                        "FOR at line "
+                                + (i + 1)
+                                + ": "
+                                + forMatcher.group(1).trim()
+                );
+            }
         }
 
         System.out.println();
-    }
+    }// =====================================================
+// IMPOSSIBLE IF CONDITION
+// =====================================================
 
-    private static void analyzeIfCondition(
-            String line,
-            int lineNumber) {
+private static void analyzeImpossibleIfCondition(
+        int lineNumber,
+        String condition) {
 
-        Matcher matcher =
-                Pattern.compile(
-                        "\\bif\\s*\\(([^)]*)\\)"
-                ).matcher(line);
+    Boolean result =
+            evaluateCondition(condition);
 
-        if (!matcher.find()) {
-            return;
-        }
+    if (result != null && !result) {
 
-        String condition = matcher.group(1).trim();
-
-        System.out.println(
-                "IF at line "
-                        + lineNumber
-                        + ": "
-                        + condition
-        );
-
-        checkCondition(
-                condition,
+        reportLogicalError(
                 lineNumber,
-                "Impossible Relational Condition"
+                "Impossible IF Condition",
+                condition,
+                "The IF condition is false for the known variable values."
         );
     }
-
-    private static void analyzeWhileCondition(
-            String line,
-            int lineNumber) {
-
-        if (line.startsWith("do")) {
-            return;
-        }
-
-        Matcher matcher =
-                Pattern.compile(
-                        "\\bwhile\\s*\\(([^)]*)\\)"
-                ).matcher(line);
-
-        if (!matcher.find()) {
-            return;
-        }
-
-        String condition = matcher.group(1).trim();
-
-        System.out.println(
-                "WHILE at line "
-                        + lineNumber
-                        + ": "
-                        + condition
-        );
-
-        checkCondition(
-                condition,
-                lineNumber,
-                "Impossible Loop Condition"
-        );
-    }
-
-    private static void analyzeForCondition(
-            String line,
-            int lineNumber) {
-
-        Matcher matcher =
-                Pattern.compile(
-                        "\\bfor\\s*\\(([^;]*);\\s*([^;]*);\\s*([^)]*)\\)"
-                ).matcher(line);
-
-        if (!matcher.find()) {
-            return;
-        }
-
-        String condition = matcher.group(2).trim();
-
-        if (condition.isEmpty()) {
-            return;
-        }
-
-        System.out.println(
-                "FOR at line "
-                        + lineNumber
-                        + ": "
-                        + condition
-        );
-
-        checkCondition(
-                condition,
-                lineNumber,
-                "Impossible Loop Condition"
-        );
-    }
-
-    private static void analyzeDoWhileCondition(
-            String line,
-            int lineNumber) {
-
-        Matcher matcher =
-                Pattern.compile(
-                        "\\bdo\\s+while\\s*\\(([^)]*)\\)"
-                ).matcher(line);
-
-        if (!matcher.find()) {
-            return;
-        }
-
-        String condition = matcher.group(1).trim();
-
-        System.out.println(
-                "DO-WHILE at line "
-                        + lineNumber
-                        + ": "
-                        + condition
-        );
-
-        checkCondition(
-                condition,
-                lineNumber,
-                "Impossible Loop Condition"
-        );
     }
 
     // =====================================================
-    // Z3 CONDITION CHECK
+    // IMPOSSIBLE LOOP CONDITION
     // =====================================================
 
-    private static void checkCondition(
-            String condition,
+    private static void analyzeImpossibleLoopCondition(
             int lineNumber,
-            String errorType) {
+            String condition) {
 
-        Matcher matcher =
-                Pattern.compile(
-                        "^([A-Za-z_$][A-Za-z0-9_$]*)"
-                                + "\\s*(<=|>=|==|!=|<|>)"
-                                + "\\s*(-?\\d+)$"
-                ).matcher(condition);
+        Boolean result =
+                evaluateCondition(condition);
 
-        if (!matcher.find()) {
-            return;
-        }
-
-        String variable = matcher.group(1);
-
-        String operator = matcher.group(2);
-
-        int rightValue =
-                Integer.parseInt(matcher.group(3));
-
-        if (!variables.containsKey(variable)) {
-            return;
-        }
-
-        int leftValue = variables.get(variable);
-
-        boolean result =
-                z3Analyzer.isSatisfiable(
-                        leftValue,
-                        operator,
-                        rightValue
-                );
-
-        System.out.println(
-                "Known variable values: "
-                        + variables
-        );
-
-        System.out.println(
-                "Generated Constraint: "
-                        + condition
-        );
-
-        if (!result) {
-
-            String description;
-
-            if (errorType.equals(
-                    "Impossible Loop Condition")) {
-
-                description =
-                        "The loop condition is false for the known "
-                                + "variable values.";
-
-            } else {
-
-                description =
-                        "Condition '"
-                                + condition
-                                + "' is false for the known "
-                                + "variable values.";
-            }
+        if (result != null && !result) {
 
             reportLogicalError(
                     lineNumber,
-                    errorType,
+                    "Impossible Loop Condition",
                     condition,
-                    description
+                    "The loop condition is false for the known variable values."
             );
         }
     }
 
     // =====================================================
-    // DIVISION BY ZERO
+    // CONDITION EVALUATION
+    // =====================================================
+
+    private static Boolean evaluateCondition(
+            String condition) {
+
+        Matcher matcher =
+                Pattern.compile(
+                        "^\\s*"
+                                + "([A-Za-z_$][A-Za-z0-9_$]*|-?\\d+)"
+                                + "\\s*"
+                                + "(<=|>=|==|!=|<|>)"
+                                + "\\s*"
+                                + "([A-Za-z_$][A-Za-z0-9_$]*|-?\\d+)"
+                                + "\\s*$"
+                ).matcher(condition);
+
+        if (!matcher.matches()) {
+            return null;
+        }
+
+        Integer left =
+                getIntegerValue(matcher.group(1));
+
+        Integer right =
+                getIntegerValue(matcher.group(3));
+
+        if (left == null || right == null) {
+            return null;
+        }
+
+        String operator =
+                matcher.group(2);
+
+        switch (operator) {
+
+            case ">":
+                return left > right;
+
+            case ">=":
+                return left >= right;
+
+            case "<":
+                return left < right;
+
+            case "<=":
+                return left <= right;
+
+            case "==":
+                return left.equals(right);
+
+            case "!=":
+                return !left.equals(right);
+
+            default:
+                return null;
+        }
+    }
+
+    // =====================================================
+    // DIVISION-BY-ZERO ANALYSIS
     // =====================================================
 
     private static void analyzeDivisionByZero(
             String source) {
 
-        System.out.println(
-                "DIVISION-BY-ZERO ANALYSIS"
-        );
+        System.out.println("DIVISION-BY-ZERO ANALYSIS");
+        System.out.println("----------------------------------------");
 
-        System.out.println(
-                "----------------------------------------"
-        );
-
-        String[] lines = source.split("\\R", -1);
+        String[] lines =
+                source.split("\\R", -1);
 
         boolean found = false;
 
@@ -638,40 +504,28 @@ public class LogicalErrorDetector {
         for (int i = 0; i < lines.length; i++) {
 
             String line =
-                    removeComment(lines[i]).trim();
+                    removeComment(lines[i]);
 
             Matcher matcher =
                     divisionPattern.matcher(line);
 
             while (matcher.find()) {
 
-                String divisor = matcher.group(2);
+                String divisor =
+                        matcher.group(2);
 
-                Integer divisorValue = null;
-
-                if (divisor.matches("-?\\d+")) {
-
-                    divisorValue =
-                            Integer.parseInt(divisor);
-
-                } else if (variables.containsKey(divisor)) {
-
-                    divisorValue =
-                            variables.get(divisor);
-                }
+                Integer divisorValue =
+                        getIntegerValue(divisor);
 
                 if (divisorValue != null
                         && divisorValue == 0) {
 
                     found = true;
 
-                    String expression =
-                            matcher.group();
-
                     reportLogicalError(
                             i + 1,
                             "Division By Zero",
-                            expression,
+                            matcher.group(),
                             "Division by zero detected. "
                                     + "The divisor evaluates to 0."
                     );
@@ -704,26 +558,28 @@ public class LogicalErrorDetector {
                 "----------------------------------------"
         );
 
-        String[] lines = source.split("\\R", -1);
+        String[] lines =
+                source.split("\\R", -1);
 
         boolean found = false;
+
+        Pattern ifPattern =
+                Pattern.compile(
+                        "\\bif\\s*\\(([^)]*)\\)"
+                );
 
         for (int i = 0; i < lines.length; i++) {
 
             String line =
                     removeComment(lines[i]).trim();
 
-            int lineNumber = i + 1;
+            Matcher matcher =
+                    ifPattern.matcher(line);
 
-            Matcher ifMatcher =
-                    Pattern.compile(
-                            "\\bif\\s*\\(([^)]*)\\)"
-                    ).matcher(line);
-
-            if (ifMatcher.find()) {
+            if (matcher.find()) {
 
                 String condition =
-                        ifMatcher.group(1).trim();
+                        matcher.group(1).trim();
 
                 Boolean result =
                         evaluateConstantCondition(
@@ -735,7 +591,7 @@ public class LogicalErrorDetector {
                     found = true;
 
                     reportLogicalError(
-                            lineNumber,
+                            i + 1,
                             "Constant Condition",
                             condition,
                             "The IF condition always evaluates to "
@@ -761,7 +617,11 @@ public class LogicalErrorDetector {
 
         Matcher matcher =
                 Pattern.compile(
-                        "(-?\\d+)\\s*(<=|>=|==|!=|<|>)\\s*(-?\\d+)"
+                        "(-?\\d+)"
+                                + "\\s*"
+                                + "(<=|>=|==|!=|<|>)"
+                                + "\\s*"
+                                + "(-?\\d+)"
                 ).matcher(condition);
 
         if (!matcher.matches()) {
@@ -769,12 +629,17 @@ public class LogicalErrorDetector {
         }
 
         int left =
-                Integer.parseInt(matcher.group(1));
+                Integer.parseInt(
+                        matcher.group(1)
+                );
 
         int right =
-                Integer.parseInt(matcher.group(3));
+                Integer.parseInt(
+                        matcher.group(3)
+                );
 
-        String operator = matcher.group(2);
+        String operator =
+                matcher.group(2);
 
         switch (operator) {
 
@@ -816,7 +681,8 @@ public class LogicalErrorDetector {
                 "----------------------------------------"
         );
 
-        String[] lines = source.split("\\R", -1);
+        String[] lines =
+                source.split("\\R", -1);
 
         boolean found = false;
 
@@ -825,15 +691,14 @@ public class LogicalErrorDetector {
             String line =
                     removeComment(lines[i]).trim();
 
-            int lineNumber = i + 1;
-
             if (line.matches(
-                    "while\\s*\\(\\s*true\\s*\\).*")) {
+                    ".*while\\s*\\(\\s*true\\s*\\).*"
+            )) {
 
                 found = true;
 
                 reportLogicalError(
-                        lineNumber,
+                        i + 1,
                         "Potential Infinite Loop",
                         "while(true)",
                         "The while loop condition is always true."
@@ -841,12 +706,13 @@ public class LogicalErrorDetector {
             }
 
             if (line.matches(
-                    "for\\s*\\(\\s*;\\s*;\\s*\\).*")) {
+                    ".*for\\s*\\(\\s*;\\s*;\\s*\\).*"
+            )) {
 
                 found = true;
 
                 reportLogicalError(
-                        lineNumber,
+                        i + 1,
                         "Potential Infinite Loop",
                         "for(;;)",
                         "The for loop has no terminating condition."
@@ -865,6 +731,146 @@ public class LogicalErrorDetector {
     }
 
     // =====================================================
+    // MISSING LOOP UPDATE ANALYSIS
+    // =====================================================
+
+    private static void analyzeMissingLoopUpdates(
+            String source) {
+
+        System.out.println(
+                "MISSING LOOP UPDATE ANALYSIS"
+        );
+
+        System.out.println(
+                "----------------------------------------"
+        );
+
+        String[] lines =
+                source.split("\\R", -1);
+
+        boolean found = false;
+
+        Pattern whilePattern =
+                Pattern.compile(
+                        "\\bwhile\\s*\\(([^)]*)\\)"
+                );
+
+        for (int i = 0; i < lines.length; i++) {
+
+            String line =
+                    removeComment(lines[i]).trim();
+
+            Matcher matcher =
+                    whilePattern.matcher(line);
+
+            if (!matcher.find()) {
+                continue;
+            }
+
+            String condition =
+                    matcher.group(1).trim();
+
+            String loopVariable =
+                    findVariableInCondition(
+                            condition
+                    );
+
+            if (loopVariable == null) {
+                continue;
+            }
+
+            int braceDepth = 0;
+            boolean started = false;
+            boolean updated = false;
+
+            for (int j = i; j < lines.length; j++) {
+
+                String loopLine =
+                        removeComment(lines[j]);
+
+                for (char c : loopLine.toCharArray()) {
+
+                    if (c == '{') {
+                        braceDepth++;
+                        started = true;
+                    }
+
+                    if (c == '}') {
+                        braceDepth--;
+                    }
+                }
+
+                if (j > i) {
+
+                    if (loopLine.matches(
+                            ".*\\b"
+                                    + Pattern.quote(loopVariable)
+                                    + "\\s*(\\+\\+|--|\\+=|-=|=).*"
+                    )) {
+
+                        updated = true;
+                    }
+                }
+
+                if (started && braceDepth <= 0) {
+                    break;
+                }
+            }
+
+            if (!updated) {
+
+                found = true;
+
+                reportLogicalError(
+                        i + 1,
+                        "Missing Loop Update",
+                        condition,
+                        "Loop variable '"
+                                + loopVariable
+                                + "' is not updated inside the loop. "
+                                + "The loop may not terminate."
+                );
+            }
+        }
+
+        if (!found) {
+
+            System.out.println(
+                    "✓ No missing loop updates found."
+            );
+        }
+
+        System.out.println();
+    }
+
+    // =====================================================
+    // FIND VARIABLE IN CONDITION
+    // =====================================================
+
+    private static String findVariableInCondition(
+            String condition) {
+
+        Matcher matcher =
+                Pattern.compile(
+                        "\\b([A-Za-z_$][A-Za-z0-9_$]*)\\b"
+                ).matcher(condition);
+
+        while (matcher.find()) {
+
+            String word =
+                    matcher.group(1);
+
+            if (!word.equals("true")
+                    && !word.equals("false")) {
+
+                return word;
+            }
+        }
+
+        return null;
+    }
+
+    // =====================================================
     // UNREACHABLE CODE ANALYSIS
     // =====================================================
 
@@ -879,13 +885,16 @@ public class LogicalErrorDetector {
                 "----------------------------------------"
         );
 
-        String[] lines = source.split("\\R", -1);
+        String[] lines =
+                source.split("\\R", -1);
 
         boolean found = false;
 
         boolean afterReturn = false;
         boolean afterBreak = false;
         boolean afterContinue = false;
+
+        int braceDepth = 0;
 
         for (int i = 0; i < lines.length; i++) {
 
@@ -896,26 +905,29 @@ public class LogicalErrorDetector {
                 continue;
             }
 
-            int lineNumber = i + 1;
-
             if (afterReturn
                     || afterBreak
                     || afterContinue) {
 
                 if (!line.equals("}")
-                        && !line.startsWith("else")
-                        && !line.startsWith("catch")
-                        && !line.startsWith("finally")) {
+                        && !line.startsWith("}")) {
 
                     found = true;
 
+                    String reason =
+                            afterReturn
+                                    ? "return statement"
+                                    : afterBreak
+                                    ? "break statement"
+                                    : "continue statement";
+
                     reportLogicalError(
-                            lineNumber,
+                            i + 1,
                             "Unreachable Code",
                             line,
-                            "This statement cannot be reached because "
-                                    + "the previous control-flow statement "
-                                    + "terminates or skips execution."
+                            "This statement appears after a "
+                                    + reason
+                                    + " and may never execute."
                     );
 
                     afterReturn = false;
@@ -925,28 +937,42 @@ public class LogicalErrorDetector {
             }
 
             if (line.matches(
-                    "return\\s*.*;")) {
+                    ".*\\breturn\\b.*;"
+            )) {
 
                 afterReturn = true;
             }
 
             if (line.matches(
-                    "break\\s*;")) {
+                    ".*\\bbreak\\s*;"
+            )) {
 
                 afterBreak = true;
             }
 
             if (line.matches(
-                    "continue\\s*;")) {
+                    ".*\\bcontinue\\s*;"
+            )) {
 
                 afterContinue = true;
             }
 
-            if (line.equals("}")) {
+            for (char c : line.toCharArray()) {
 
-                afterReturn = false;
-                afterBreak = false;
-                afterContinue = false;
+                if (c == '{') {
+                    braceDepth++;
+                }
+
+                if (c == '}') {
+                    braceDepth--;
+
+                    if (braceDepth <= 0) {
+
+                        afterReturn = false;
+                        afterBreak = false;
+                        afterContinue = false;
+                    }
+                }
             }
         }
 
@@ -975,32 +1001,54 @@ public class LogicalErrorDetector {
                 "----------------------------------------"
         );
 
-        String[] lines = source.split("\\R", -1);
+        Set<String> declared =
+                new HashSet<>();
+
+        Set<String> initialized =
+                new HashSet<>();
+
+        String[] lines =
+                source.split("\\R", -1);
+
+        Pattern declarationPattern =
+                Pattern.compile(
+                        "\\b(?:int|long|short|byte|double|float|"
+                                + "boolean|char|String)\\s+"
+                                + "([A-Za-z_$][A-Za-z0-9_$]*)"
+                                + "\\s*(=\\s*([^;]+))?\\s*;"
+                );
+
+        Pattern identifierPattern =
+                Pattern.compile(
+                        "\\b[A-Za-z_$][A-Za-z0-9_$]*\\b"
+                );
 
         boolean found = false;
 
-        Set<String> declared =
-                new LinkedHashSet<>();
-
-        Set<String> initialized =
-                new LinkedHashSet<>();
-
-        Pattern declarationWithValue =
-                Pattern.compile(
-                        "\\b(?:int|long|short|byte)\\s+"
-                                + "([A-Za-z_$][A-Za-z0-9_$]*)"
-                                + "\\s*=\\s*(.+?);?$"
-                );
-
-        Pattern declarationOnly =
-                Pattern.compile(
-                        "\\b(?:int|long|short|byte)\\s+"
-                                + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*;"
-                );
-
-        Pattern variableUse =
-                Pattern.compile(
-                        "\\b([A-Za-z_$][A-Za-z0-9_$]*)\\b"
+        Set<String> keywords =
+                Set.of(
+                        "int",
+                        "long",
+                        "short",
+                        "byte",
+                        "double",
+                        "float",
+                        "boolean",
+                        "char",
+                        "String",
+                        "if",
+                        "else",
+                        "while",
+                        "for",
+                        "return",
+                        "true",
+                        "false",
+                        "break",
+                        "continue",
+                        "new",
+                        "System",
+                        "out",
+                        "println"
                 );
 
         for (int i = 0; i < lines.length; i++) {
@@ -1012,73 +1060,83 @@ public class LogicalErrorDetector {
                 continue;
             }
 
-            int lineNumber = i + 1;
+            Matcher declarationMatcher =
+                    declarationPattern.matcher(line);
 
-            Matcher declaration =
-                    declarationWithValue.matcher(line);
+            while (declarationMatcher.find()) {
 
-            if (declaration.find()) {
+                String variableName =
+                        declarationMatcher.group(1);
 
-                String variable =
-                        declaration.group(1);
+                declared.add(variableName);
 
-                declared.add(variable);
-                initialized.add(variable);
+                String initializer =
+                        declarationMatcher.group(3);
 
-                continue;
+                if (initializer != null) {
+                    initialized.add(variableName);
+                }
             }
 
-            Matcher emptyDeclaration =
-                    declarationOnly.matcher(line);
+            Matcher identifierMatcher =
+                    identifierPattern.matcher(line);
 
-            if (emptyDeclaration.find()) {
+            while (identifierMatcher.find()) {
 
-                String variable =
-                        emptyDeclaration.group(1);
+                String identifier =
+                        identifierMatcher.group();
 
-                declared.add(variable);
+                if (keywords.contains(identifier)) {
+                    continue;
+                }
 
-                continue;
+                if (!declared.contains(identifier)) {
+                    continue;
+                }
+
+                int declarationPosition =
+                        line.indexOf(identifier);
+
+                boolean declarationLine =
+                        declarationMatcher.find(
+                                declarationPosition
+                        );
+
+                if (declarationLine) {
+                    continue;
+                }
+
+                if (!initialized.contains(identifier)) {
+
+                    found = true;
+
+                    reportLogicalError(
+                            i + 1,
+                            "Uninitialized Variable",
+                            identifier,
+                            "Variable '"
+                                    + identifier
+                                    + "' may be used before initialization."
+                    );
+
+                    initialized.add(identifier);
+                }
             }
 
-            Matcher useMatcher =
-                    variableUse.matcher(line);
+            Pattern assignmentPattern =
+                    Pattern.compile(
+                            "^\\s*([A-Za-z_$][A-Za-z0-9_$]*)"
+                                    + "\\s*="
+                    );
 
-            while (useMatcher.find()) {
+            Matcher assignmentMatcher =
+                    assignmentPattern.matcher(line);
 
-                String variable =
-                        useMatcher.group(1);
+            if (assignmentMatcher.find()) {
 
-                if (!declared.contains(variable)) {
-                    continue;
-                }
-
-                if (initialized.contains(variable)) {
-                    continue;
-                }
-
-                if (line.startsWith(variable + " =")) {
-                    initialized.add(variable);
-                    continue;
-                }
-
-                if (line.startsWith(
-                        "int " + variable)) {
-                    continue;
-                }
-
-                found = true;
-
-                reportLogicalError(
-                        lineNumber,
-                        "Variable Used Before Initialization",
-                        variable,
-                        "Variable '" + variable
-                                + "' is used before it is initialized."
+                initialized.add(
+                        assignmentMatcher.group(1)
                 );
-
-                initialized.add(variable);
-                break;
             }
         }
 
@@ -1107,68 +1165,101 @@ public class LogicalErrorDetector {
                 "----------------------------------------"
         );
 
-        String[] lines = source.split("\\R", -1);
+        String[] lines =
+                source.split("\\R", -1);
 
         boolean found = false;
 
-        Map<String, Integer> lastAssignment =
-                new LinkedHashMap<>();
+        Map<String, Integer> lastAssignmentLine =
+                new HashMap<>();
+
+        Map<String, Boolean> usedAfterAssignment =
+                new HashMap<>();
+
+        Pattern assignmentPattern =
+                Pattern.compile(
+                        "^\\s*([A-Za-z_$][A-Za-z0-9_$]*)"
+                                + "\\s*=\\s*(.+?);\\s*$"
+                );
+
+        Pattern identifierPattern =
+                Pattern.compile(
+                        "\\b[A-Za-z_$][A-Za-z0-9_$]*\\b"
+                );
 
         for (int i = 0; i < lines.length; i++) {
 
             String line =
                     removeComment(lines[i]).trim();
 
-            if (line.isEmpty()) {
-                continue;
-            }
+            Matcher assignmentMatcher =
+                    assignmentPattern.matcher(line);
 
-            int lineNumber = i + 1;
+            if (assignmentMatcher.matches()) {
 
-            Matcher assignment =
-                    Pattern.compile(
-                            "^(?:int|long|short|byte)?\\s*"
-                                    + "([A-Za-z_$][A-Za-z0-9_$]*)"
-                                    + "\\s*=\\s*(.+);$"
-                    ).matcher(line);
+                String variable =
+                        assignmentMatcher.group(1);
 
-            if (!assignment.find()) {
-                continue;
-            }
+                if (lastAssignmentLine.containsKey(
+                        variable
+                )) {
 
-            String variable =
-                    assignment.group(1);
+                    Integer previousLine =
+                            lastAssignmentLine.get(
+                                    variable
+                            );
 
-            String expression =
-                    assignment.group(2);
+                    Boolean used =
+                            usedAfterAssignment.get(
+                                    variable
+                            );
 
-            if (lastAssignment.containsKey(variable)) {
+                    if (Boolean.FALSE.equals(used)) {
 
-                int previousLine =
-                        lastAssignment.get(variable);
+                        found = true;
 
-                found = true;
+                        reportLogicalError(
+                                previousLine,
+                                "Dead Assignment",
+                                variable,
+                                "The value assigned to '"
+                                        + variable
+                                        + "' is overwritten "
+                                        + "before being used."
+                        );
+                    }
+                }
 
-                reportLogicalError(
-                        previousLine,
-                        "Dead Assignment",
+                lastAssignmentLine.put(
                         variable,
-                        "The value assigned to '" + variable
-                                + "' is overwritten before it is used."
+                        i + 1
                 );
+
+                usedAfterAssignment.put(
+                        variable,
+                        false
+                );
+
+                continue;
             }
 
-            lastAssignment.put(
-                    variable,
-                    lineNumber
-            );
+            Matcher identifierMatcher =
+                    identifierPattern.matcher(line);
 
-            /*
-             * Remove the assignment from consideration if
-             * the variable is used in the same expression.
-             */
-            if (expression.contains(variable)) {
-                lastAssignment.remove(variable);
+            while (identifierMatcher.find()) {
+
+                String identifier =
+                        identifierMatcher.group();
+
+                if (lastAssignmentLine.containsKey(
+                        identifier
+                )) {
+
+                    usedAfterAssignment.put(
+                            identifier,
+                            true
+                    );
+                }
             }
         }
 
@@ -1181,129 +1272,106 @@ public class LogicalErrorDetector {
 
         System.out.println();
     }
-	// =====================================================
-// MISSING LOOP UPDATE ANALYSIS
-// =====================================================
 
-private static void analyzeMissingLoopUpdate(String source) {
+    // =====================================================
+    // INTEGER EXPRESSION EVALUATION
+    // =====================================================
 
-    System.out.println("MISSING LOOP UPDATE ANALYSIS");
-    System.out.println("----------------------------------------");
+    private static Integer evaluateIntegerExpression(
+            String expression) {
 
-    String[] lines = source.split("\\R", -1);
-    boolean found = false;
+        expression =
+                expression.trim();
 
-    for (int i = 0; i < lines.length; i++) {
+        if (expression.matches("-?\\d+")) {
 
-        String line = removeComment(lines[i]).trim();
-
-        if (!line.startsWith("while")) {
-            continue;
-        }
-
-        Matcher matcher = Pattern.compile(
-                "\\bwhile\\s*\\(([^)]*)\\)"
-        ).matcher(line);
-
-        if (!matcher.find()) {
-            continue;
-        }
-
-        String condition = matcher.group(1).trim();
-
-        Matcher variableMatcher = Pattern.compile(
-                "^([A-Za-z_$][A-Za-z0-9_$]*)\\s*(<|<=|>|>=|==|!=)"
-        ).matcher(condition);
-
-        if (!variableMatcher.find()) {
-            continue;
-        }
-
-        String variable = variableMatcher.group(1);
-
-        int startLine = i + 1;
-        int braceCount = 0;
-        boolean loopBodyFound = false;
-        boolean updateFound = false;
-
-        for (int j = i; j < lines.length; j++) {
-
-            String bodyLine = removeComment(lines[j]).trim();
-
-            if (bodyLine.contains("{")) {
-                braceCount += countOccurrences(bodyLine, '{');
-                loopBodyFound = true;
+            try {
+                return Integer.parseInt(expression);
+            } catch (NumberFormatException e) {
+                return null;
             }
+        }
 
-            if (bodyLine.contains("}")) {
-                braceCount -= countOccurrences(bodyLine, '}');
-            }
+        if (variables.containsKey(expression)) {
+            return variables.get(expression);
+        }
 
-            if (j > i) {
+        Matcher arithmetic =
+                Pattern.compile(
+                        "(-?\\d+|[A-Za-z_$][A-Za-z0-9_$]*)"
+                                + "\\s*"
+                                + "([+\\-*/])"
+                                + "\\s*"
+                                + "(-?\\d+|[A-Za-z_$][A-Za-z0-9_$]*)"
+                ).matcher(expression);
 
-                if (bodyLine.matches(
-                        ".*\\b" + Pattern.quote(variable)
-                                + "\\s*(\\+\\+|--).*"
-                )
-                        || bodyLine.matches(
-                        ".*\\b" + Pattern.quote(variable)
-                                + "\\s*[+\\-]=\\s*\\d+.*"
-                )
-                        || bodyLine.matches(
-                        ".*\\b" + Pattern.quote(variable)
-                                + "\\s*=\\s*"
-                                + Pattern.quote(variable)
-                                + "\\s*[+\\-]\\s*\\d+.*"
-                )) {
+        if (!arithmetic.matches()) {
+            return null;
+        }
 
-                    updateFound = true;
+        Integer left =
+                getIntegerValue(
+                        arithmetic.group(1)
+                );
+
+        Integer right =
+                getIntegerValue(
+                        arithmetic.group(3)
+                );
+
+        if (left == null || right == null) {
+            return null;
+        }
+
+        String operator =
+                arithmetic.group(2);
+
+        switch (operator) {
+
+            case "+":
+                return left + right;
+
+            case "-":
+                return left - right;
+
+            case "*":
+                return left * right;
+
+            case "/":
+
+                if (right == 0) {
+                    return null;
                 }
+
+                return left / right;
+
+            default:
+                return null;
+        }
+    }
+
+    // =====================================================
+    // GET INTEGER VALUE
+    // =====================================================
+
+    private static Integer getIntegerValue(
+            String value) {
+
+        value =
+                value.trim();
+
+        if (value.matches("-?\\d+")) {
+
+            try {
+                return Integer.parseInt(value);
+            } catch (NumberFormatException e) {
+                return null;
             }
-
-            if (loopBodyFound && braceCount <= 0) {
-                break;
-            }
         }
 
-        if (loopBodyFound && !updateFound) {
-
-            found = true;
-
-            reportLogicalError(
-                    startLine,
-                    "Missing Loop Update",
-                    condition,
-                    "Loop variable '" + variable
-                            + "' is not updated inside the loop. "
-                            + "The loop may not terminate."
-            );
-        }
+        return variables.get(value);
     }
 
-    if (!found) {
-        System.out.println(
-                "✓ No missing loop updates found."
-        );
-    }
-
-    System.out.println();
-}
-
-private static int countOccurrences(
-        String text,
-        char character) {
-
-    int count = 0;
-
-    for (int i = 0; i < text.length(); i++) {
-
-        if (text.charAt(i) == character) {
-            count++;
-        }
-    }
-
-    return count;
-}
     // =====================================================
     // ERROR REPORTER
     // =====================================================
@@ -1328,7 +1396,6 @@ private static int countOccurrences(
         reportedErrors.add(key);
 
         System.out.println();
-
         System.out.println(
                 "Logical Error Detected!"
         );
@@ -1419,6 +1486,7 @@ private static int countOccurrences(
                 && !reportedErrors.isEmpty()) {
 
             System.out.println();
+
             System.out.println(
                     "Both syntax and logical errors were detected."
             );
@@ -1426,6 +1494,7 @@ private static int countOccurrences(
         } else if (syntaxError) {
 
             System.out.println();
+
             System.out.println(
                     "Only syntax errors were detected."
             );
@@ -1433,6 +1502,7 @@ private static int countOccurrences(
         } else if (!reportedErrors.isEmpty()) {
 
             System.out.println();
+
             System.out.println(
                     "Only logical errors were detected."
             );
@@ -1440,6 +1510,7 @@ private static int countOccurrences(
         } else {
 
             System.out.println();
+
             System.out.println(
                     "No syntax or logical errors were detected."
             );
