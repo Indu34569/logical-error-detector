@@ -99,6 +99,7 @@ public class Z3ConstraintAnalyzer {
 
         Status result =
                 solver.check();
+	System.out.println("Z3 Solver Result: " + result);
 
         return result == Status.SATISFIABLE;
     }

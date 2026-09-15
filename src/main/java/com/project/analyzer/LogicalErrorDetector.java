@@ -16,6 +16,8 @@ public class LogicalErrorDetector {
 
     private static final Map<String, Integer> variables =
             new LinkedHashMap<>();
+    private static final Z3ConstraintAnalyzer z3Analyzer =
+	    new Z3ConstraintAnalyzer();
 
     /*
      * Stores logical errors already reported.
@@ -577,12 +579,9 @@ public class LogicalErrorDetector {
         int leftValue =
                 variables.get(variable);
 
-        boolean result =
-                evaluate(
-                        leftValue,
-                        operator,
-                        rightValue
-                );
+        boolean result = 
+		z3Analyzer.isSatisfiable(leftValue, operator, rightValue);
+                
 
         System.out.println(
                 "Known variable values: "
