@@ -71,6 +71,7 @@ public class LogicalErrorDetector {
         analyzeDivisionByZero(source);
         analyzeConstantConditions(source);
         analyzeInfiniteLoops(source);
+	analyzeMissingLoopUpdate(source);
         analyzeUnreachableCode(source);
         analyzeUninitializedVariables(source);
         analyzeDeadAssignments(source);
@@ -1180,7 +1181,129 @@ public class LogicalErrorDetector {
 
         System.out.println();
     }
+	// =====================================================
+// MISSING LOOP UPDATE ANALYSIS
+// =====================================================
 
+private static void analyzeMissingLoopUpdate(String source) {
+
+    System.out.println("MISSING LOOP UPDATE ANALYSIS");
+    System.out.println("----------------------------------------");
+
+    String[] lines = source.split("\\R", -1);
+    boolean found = false;
+
+    for (int i = 0; i < lines.length; i++) {
+
+        String line = removeComment(lines[i]).trim();
+
+        if (!line.startsWith("while")) {
+            continue;
+        }
+
+        Matcher matcher = Pattern.compile(
+                "\\bwhile\\s*\\(([^)]*)\\)"
+        ).matcher(line);
+
+        if (!matcher.find()) {
+            continue;
+        }
+
+        String condition = matcher.group(1).trim();
+
+        Matcher variableMatcher = Pattern.compile(
+                "^([A-Za-z_$][A-Za-z0-9_$]*)\\s*(<|<=|>|>=|==|!=)"
+        ).matcher(condition);
+
+        if (!variableMatcher.find()) {
+            continue;
+        }
+
+        String variable = variableMatcher.group(1);
+
+        int startLine = i + 1;
+        int braceCount = 0;
+        boolean loopBodyFound = false;
+        boolean updateFound = false;
+
+        for (int j = i; j < lines.length; j++) {
+
+            String bodyLine = removeComment(lines[j]).trim();
+
+            if (bodyLine.contains("{")) {
+                braceCount += countOccurrences(bodyLine, '{');
+                loopBodyFound = true;
+            }
+
+            if (bodyLine.contains("}")) {
+                braceCount -= countOccurrences(bodyLine, '}');
+            }
+
+            if (j > i) {
+
+                if (bodyLine.matches(
+                        ".*\\b" + Pattern.quote(variable)
+                                + "\\s*(\\+\\+|--).*"
+                )
+                        || bodyLine.matches(
+                        ".*\\b" + Pattern.quote(variable)
+                                + "\\s*[+\\-]=\\s*\\d+.*"
+                )
+                        || bodyLine.matches(
+                        ".*\\b" + Pattern.quote(variable)
+                                + "\\s*=\\s*"
+                                + Pattern.quote(variable)
+                                + "\\s*[+\\-]\\s*\\d+.*"
+                )) {
+
+                    updateFound = true;
+                }
+            }
+
+            if (loopBodyFound && braceCount <= 0) {
+                break;
+            }
+        }
+
+        if (loopBodyFound && !updateFound) {
+
+            found = true;
+
+            reportLogicalError(
+                    startLine,
+                    "Missing Loop Update",
+                    condition,
+                    "Loop variable '" + variable
+                            + "' is not updated inside the loop. "
+                            + "The loop may not terminate."
+            );
+        }
+    }
+
+    if (!found) {
+        System.out.println(
+                "✓ No missing loop updates found."
+        );
+    }
+
+    System.out.println();
+}
+
+private static int countOccurrences(
+        String text,
+        char character) {
+
+    int count = 0;
+
+    for (int i = 0; i < text.length(); i++) {
+
+        if (text.charAt(i) == character) {
+            count++;
+        }
+    }
+
+    return count;
+}
     // =====================================================
     // ERROR REPORTER
     // =====================================================
