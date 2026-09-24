@@ -1621,3 +1621,13 @@ footer {
     grid-template-columns: 1fr;
   }
 }
+/* Final visibility fix for LogicLens classification labels */
+.classification-card .classification-title,
+.classification-card .classification-label,
+.classification-card strong,
+.classification-card h3,
+.classification-card h4 {
+  color: #1f2937 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
