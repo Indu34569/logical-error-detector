@@ -1621,3 +1621,14 @@ footer {
     grid-template-columns: 1fr;
   }
 }
+/* Dark text for AST classification labels */
+.classification-card > strong {
+  color: #1f2937 !important;
+  opacity: 1 !important;
+}
+
+.classification-card .classification-title,
+.classification-card .classification-label {
+  color: #1f2937 !important;
+  opacity: 1 !important;
+}
