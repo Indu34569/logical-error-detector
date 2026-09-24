@@ -1,843 +1,2021 @@
-async function analyzeCode() {
-const codeInput = document.getElementById("codeInput");
-const resultBox = document.getElementById("resultBox");
-const button = document.getElementById("analyzeButton");
+const tabs = document.querySelectorAll(".tab");
+const pages = document.querySelectorAll(".page");
 
+let currentAnalysis = {
+    code: "",
+    lines: 0,
+    errors: [],
+    syntaxErrors: [],
+    warnings: 0,
+    time: "--",
+    timestamp: null
+};
 
-const code = codeInput.value;
+/* =========================================================
+   TAB NAVIGATION
+========================================================= */
 
-if (!code.trim()) {
-    resultBox.innerHTML = `
-        <div class="empty-result">
-            <div class="empty-icon">⚠</div>
-            <h3>Please enter Java code</h3>
-            <p>Paste a Java program into the code editor.</p>
-        </div>
-    `;
-    return;
-}
+tabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+        switchTab(tab.dataset.tab);
+    });
+});
 
-button.disabled = true;
-button.textContent = "Analyzing...";
+function switchTab(tabName) {
+    tabs.forEach(tab => {
+        tab.classList.toggle(
+            "active",
+            tab.dataset.tab === tabName
+        );
+    });
 
-resultBox.innerHTML = `
-    <div class="loading-result">
-        <div class="empty-icon">🔍</div>
-        <h3>Analyzing Program...</h3>
-        <p>JavaParser → Data Flow → Constraints → Z3 → Error Detection</p>
-    </div>
-`;
+    pages.forEach(page => {
+        page.classList.toggle(
+            "active-page",
+            page.id === tabName
+        );
+    });
 
-try {
-    const response = await fetch(
-        "https://logical-error-detector-backend.onrender.com/analyze",
-        {
-            method: "POST",
-            headers: {
-                "Content-Type": "text/plain"
-            },
-            body: code
-        }
-    );
-
-    const result = await response.text();
-
-    if (!response.ok) {
-        throw new Error(result);
+    if (tabName === "history") {
+        displayHistory();
     }
 
-    const syntaxErrors = extractSyntaxErrors(result);
-    const logicalErrors = extractErrors(result);
-
-    const hasSyntaxErrors =
-        syntaxErrors.length > 0 ||
-        /Syntax errors detected!/i.test(result);
-
-    const hasLogicalErrors =
-        logicalErrors.length > 0;
-
-    displayCombinedResult(
-        result,
-        hasSyntaxErrors,
-        hasLogicalErrors
-    );
-
-} catch (error) {
-    resultBox.innerHTML = `
-        <div class="error-result">
-            <div class="result-header error-header">
-                <span>⚠</span>
-                <div>
-                    <h2>Backend Not Connected</h2>
-                    <p>The analysis server could not be reached.</p>
-                </div>
-            </div>
-
-            <p>
-                <b>${escapeHtml(error.message)}</b>
-            </p>
-        </div>
-    `;
-} finally {
-    button.disabled = false;
-    button.textContent = "Analyze Code";
-}
-
-
+    if (tabName === "report") {
+        updateReport();
+    }
 }
 
 /* =========================================================
-DISPLAY COMBINED RESULT
+   CODE INPUT
 ========================================================= */
 
-function displayCombinedResult(
-result,
-hasSyntaxErrors,
-hasLogicalErrors
-) {
-const resultBox = document.getElementById("resultBox");
+function updateLineNumbers() {
+    const textarea = document.getElementById("codeInput");
+    const lineNumbers = document.getElementById("lineNumbers");
+    const lineCount = document.getElementById("lineCount");
 
+    if (!textarea) {
+        return;
+    }
 
-const syntaxErrors = extractSyntaxErrors(result);
-const logicalErrors = extractErrors(result);
+    const code = textarea.value;
+    const lines = code === "" ? 1 : code.split("\n").length;
 
-const syntaxCount = syntaxErrors.length;
-const logicalCount = logicalErrors.length;
-const totalErrors = syntaxCount + logicalCount;
+    if (lineNumbers) {
+        lineNumbers.textContent = Array.from(
+            { length: lines },
+            (_, i) => i + 1
+        ).join("\n");
+    }
 
-if (!hasSyntaxErrors && logicalCount === 0) {
-    displaySuccessResult(result);
-    return;
+    if (lineCount) {
+        lineCount.textContent =
+            `${code === "" ? 0 : lines} ${lines === 1 ? "line" : "lines"}`;
+    }
 }
 
-let title;
-let message;
+/* =========================================================
+   EXAMPLE PROGRAM
+========================================================= */
 
-if (hasSyntaxErrors && logicalCount > 0) {
-    title = "Syntax & Logical Errors Detected";
-    message =
-        "The analyzer found both syntax and logical problems in the Java program.";
-} else if (hasSyntaxErrors) {
-    title = "Syntax Errors Detected";
-    message =
-        "The analyzer found syntax errors in the Java program.";
-} else {
-    title = "Logical Errors Detected";
-    message =
-        "The analyzer found logical problems in the Java program.";
+function loadExample() {
+    const textarea = document.getElementById("codeInput");
+
+    if (!textarea) {
+        return;
+    }
+
+    const example = `public class TestProgram {
+
+public static void main(String[] args) {
+
+    int x = 5;
+
+    if (x > 10 && x < 3) {
+        System.out.println("This condition is impossible");
+    }
+
 }
 
+}`;
 
-/* =====================================================
-   SYNTAX CARDS
-   ===================================================== */
+    textarea.value = example;
 
-let syntaxSection = "";
+    updateLineNumbers();
+}
 
-if (hasSyntaxErrors) {
-    let syntaxCards = "";
+/* =========================================================
+   MAIN ANALYSIS
+========================================================= */
+
+function startAnalysis() {
+    const textarea = document.getElementById("codeInput");
+
+    if (!textarea) {
+        return;
+    }
+
+    const code = textarea.value.trim();
+
+    if (!code) {
+        alert("Please enter or paste Java code first.");
+        return;
+    }
+
+    const startTime = performance.now();
+
+    currentAnalysis.code = code;
+    currentAnalysis.lines = code.split("\n").length;
+    currentAnalysis.timestamp = new Date();
+
+    /* FIRST: SYNTAX CHECK */
+
+    const syntaxErrors = detectSyntaxErrors(code);
+
+    currentAnalysis.syntaxErrors = syntaxErrors;
+
+    /* STOP LOGICAL ANALYSIS IF SYNTAX IS INVALID */
 
     if (syntaxErrors.length > 0) {
-        syntaxCards = syntaxErrors
-            .map((error, index) => {
-                return `
-                    <div class="detected-error-card">
-                        <div class="error-title">
-                            <span class="error-badge">
-                                ERROR ${index + 1}
-                            </span>
+        currentAnalysis.errors = syntaxErrors;
 
-                            <h3>Syntax Error</h3>
+        const elapsed = performance.now() - startTime;
+
+        currentAnalysis.time =
+            `${elapsed.toFixed(2)} ms`;
+
+        updateDashboard();
+        updateErrors();
+        updateReport();
+
+        saveHistory();
+
+        switchTab("flow");
+
+        runSyntaxErrorAnimation(syntaxErrors);
+
+        return;
+    }
+
+    /* SECOND: LOGICAL ANALYSIS */
+
+    const errors = detectLogicalErrors(code);
+
+    currentAnalysis.errors = errors;
+
+    const elapsed = performance.now() - startTime;
+
+    currentAnalysis.time =
+        elapsed < 1
+            ? `${elapsed.toFixed(2)} ms`
+            : `${elapsed.toFixed(1)} ms`;
+
+    updateDashboard();
+    updateErrors();
+    updateReport();
+
+    saveHistory();
+
+    switchTab("flow");
+
+    runAnalysisAnimation(errors);
+    animateAstClassification(code, errors);
+}
+
+/* =========================================================
+   DASHBOARD
+========================================================= */
+
+function updateDashboard() {
+    setText(
+        "dashboardLines",
+        currentAnalysis.lines
+    );
+
+    setText(
+        "dashboardErrors",
+        currentAnalysis.errors.length
+    );
+
+    setText(
+        "dashboardTime",
+        currentAnalysis.time
+    );
+}
+
+/* =========================================================
+   BASIC JAVA SYNTAX CHECKING
+========================================================= */
+
+function detectSyntaxErrors(code) {
+    const errors = [];
+    const lines = code.split("\n");
+
+    let braceBalance = 0;
+    let parenthesisBalance = 0;
+    let insideString = false;
+
+    lines.forEach((line, index) => {
+        const trimmed = line.trim();
+
+        for (let i = 0; i < line.length; i++) {
+            const character = line[i];
+            const previous = line[i - 1];
+
+            if (
+                character === '"' &&
+                previous !== "\\"
+            ) {
+                insideString = !insideString;
+            }
+
+            if (!insideString) {
+                if (character === "{") {
+                    braceBalance++;
+                }
+
+                if (character === "}") {
+                    braceBalance--;
+
+                    if (braceBalance < 0) {
+                        errors.push({
+                            line: index + 1,
+                            type: "Syntax Error",
+                            code: trimmed,
+                            explanation:
+                                "A closing brace appears without a matching opening brace."
+                        });
+
+                        braceBalance = 0;
+                    }
+                }
+
+                if (character === "(") {
+                    parenthesisBalance++;
+                }
+
+                if (character === ")") {
+                    parenthesisBalance--;
+
+                    if (parenthesisBalance < 0) {
+                        errors.push({
+                            line: index + 1,
+                            type: "Syntax Error",
+                            code: trimmed,
+                            explanation:
+                                "A closing parenthesis appears without a matching opening parenthesis."
+                        });
+
+                        parenthesisBalance = 0;
+                    }
+                }
+            }
+        }
+
+        /* Missing closing parenthesis after if/while */
+
+        if (
+            /\b(if|while|for)\s*\(/.test(trimmed) &&
+            !trimmed.includes(")")
+        ) {
+            errors.push({
+                line: index + 1,
+                type: "Syntax Error",
+                code: trimmed,
+                explanation:
+                    "The control statement is missing a closing parenthesis."
+            });
+        }
+
+        /* Basic incomplete declaration */
+
+        if (
+            /\bint\s+[A-Za-z_$][\w$]*\s*=/.test(trimmed) &&
+            !trimmed.endsWith(";") &&
+            !trimmed.endsWith("{")
+        ) {
+            errors.push({
+                line: index + 1,
+                type: "Syntax Error",
+                code: trimmed,
+                explanation:
+                    "The variable declaration appears to be missing a semicolon."
+            });
+        }
+
+        /* Basic incomplete if statement */
+
+        if (
+            /^if\s*\(/.test(trimmed) &&
+            trimmed.includes(")") &&
+            !trimmed.includes("{") &&
+            !trimmed.endsWith(";")
+        ) {
+            const nextLine =
+                lines[index + 1]
+                    ? lines[index + 1].trim()
+                    : "";
+
+            if (
+                nextLine !== "{" &&
+                nextLine !== ""
+            ) {
+                errors.push({
+                    line: index + 1,
+                    type: "Syntax Error",
+                    code: trimmed,
+                    explanation:
+                        "The if statement does not contain a valid block or statement."
+                });
+            }
+        }
+    });
+
+    if (braceBalance > 0) {
+        errors.push({
+            line: lines.length,
+            type: "Syntax Error",
+            code: "Program structure",
+            explanation:
+                "One or more opening braces are missing their closing braces."
+        });
+    }
+
+    if (parenthesisBalance > 0) {
+        errors.push({
+            line: lines.length,
+            type: "Syntax Error",
+            code: "Program structure",
+            explanation:
+                "One or more opening parentheses are missing their closing parentheses."
+        });
+    }
+
+    if (insideString) {
+        errors.push({
+            line: lines.length,
+            type: "Syntax Error",
+            code: "String literal",
+            explanation:
+                "A string literal was opened but not properly closed."
+        });
+    }
+
+    return removeDuplicateErrors(errors);
+}
+
+/* =========================================================
+   LOGICAL ANALYSIS
+========================================================= */
+
+function detectLogicalErrors(code) {
+    const errors = [];
+    const variables = {};
+    const lines = code.split("\n");
+
+    /* Find integer assignments */
+
+    lines.forEach(line => {
+        const match = line.match(
+            /\bint\s+([A-Za-z_$][\w$]*)\s*=\s*(-?\d+)\s*;/
+        );
+
+        if (match) {
+            variables[match[1]] =
+                Number(match[2]);
+        }
+
+        /* Also track later assignments */
+
+        const assignment =
+            line.match(
+                /^\s*([A-Za-z_$][\w$]*)\s*=\s*(-?\d+)\s*;/
+            );
+
+        if (assignment) {
+            variables[assignment[1]] =
+                Number(assignment[2]);
+        }
+    });
+
+    /* IF CONDITIONS */
+
+    lines.forEach((line, index) => {
+        const ifMatch =
+            line.match(/\bif\s*\((.*)\)/);
+
+        if (!ifMatch) {
+            return;
+        }
+
+        const condition =
+            ifMatch[1].trim();
+
+        const result =
+            evaluateCondition(
+                condition,
+                variables
+            );
+
+        if (result === false) {
+            errors.push({
+                line: index + 1,
+                type: "Unreachable TRUE Branch",
+                code: line.trim(),
+                explanation:
+                    `The condition "${condition}" is false for the known variable values. The TRUE branch cannot execute.`
+            });
+        }
+
+        if (
+            condition.includes("&&") &&
+            isContradictoryCondition(
+                condition,
+                variables
+            )
+        ) {
+            errors.push({
+                line: index + 1,
+                type: "Contradictory Condition",
+                code: line.trim(),
+                explanation:
+                    `The condition "${condition}" cannot become true with the known variable values.`
+            });
+        }
+    });
+
+    /* WHILE CONDITIONS */
+
+    lines.forEach((line, index) => {
+        const whileMatch =
+            line.match(/\bwhile\s*\((.*)\)/);
+
+        if (!whileMatch) {
+            return;
+        }
+
+        const condition =
+            whileMatch[1].trim();
+
+        if (condition === "true") {
+            const loopBody =
+                getBlockAfterLine(
+                    lines,
+                    index
+                );
+
+            if (!/\bbreak\s*;/.test(loopBody)) {
+                errors.push({
+                    line: index + 1,
+                    type: "Infinite Loop",
+                    code: line.trim(),
+                    explanation:
+                        "The while condition is always true and no break statement was found."
+                });
+            }
+        }
+
+        const result =
+            evaluateCondition(
+                condition,
+                variables
+            );
+
+        if (result === false) {
+            errors.push({
+                line: index + 1,
+                type: "Unreachable While Loop",
+                code: line.trim(),
+                explanation:
+                    `The loop condition "${condition}" is false for the known variable values, so the loop body cannot execute.`
+            });
+        }
+    });
+
+    return removeDuplicateErrors(errors);
+}
+
+/* =========================================================
+   CONDITION EVALUATION
+========================================================= */
+
+function evaluateCondition(
+    condition,
+    variables
+) {
+    try {
+        let expression = condition;
+
+        Object.keys(variables).forEach(variable => {
+            const value =
+                variables[variable];
+
+            const regex =
+                new RegExp(
+                    `\\b${escapeRegex(variable)}\\b`,
+                    "g"
+                );
+
+            expression =
+                expression.replace(
+                    regex,
+                    String(value)
+                );
+        });
+
+        if (expression.includes("&&")) {
+            return expression
+                .split("&&")
+                .every(part =>
+                    evaluateSimpleCondition(
+                        part.trim()
+                    )
+                );
+        }
+
+        if (expression.includes("||")) {
+            return expression
+                .split("||")
+                .some(part =>
+                    evaluateSimpleCondition(
+                        part.trim()
+                    )
+                );
+        }
+
+        return evaluateSimpleCondition(
+            expression
+        );
+
+    } catch {
+        return null;
+    }
+}
+
+function evaluateSimpleCondition(
+    expression
+) {
+    const match =
+        expression.match(
+            /^(-?\d+)\s*(>=|<=|==|!=|>|<)\s*(-?\d+)$/
+        );
+
+    if (!match) {
+        return null;
+    }
+
+    const left =
+        Number(match[1]);
+
+    const operator =
+        match[2];
+
+    const right =
+        Number(match[3]);
+
+    switch (operator) {
+        case ">":
+            return left > right;
+
+        case "<":
+            return left < right;
+
+        case ">=":
+            return left >= right;
+
+        case "<=":
+            return left <= right;
+
+        case "==":
+            return left === right;
+
+        case "!=":
+            return left !== right;
+
+        default:
+            return null;
+    }
+}
+
+/* =========================================================
+   CONTRADICTION DETECTION
+========================================================= */
+
+function isContradictoryCondition(
+    condition,
+    variables
+) {
+    const parts =
+        condition.split("&&");
+
+    if (parts.length < 2) {
+        return false;
+    }
+
+    const results =
+        parts.map(part =>
+            evaluateCondition(
+                part.trim(),
+                variables
+            )
+        );
+
+    return results.some(
+        result => result === false
+    );
+}
+
+/* =========================================================
+   BLOCK EXTRACTION
+========================================================= */
+
+function getBlockAfterLine(
+    lines,
+    index
+) {
+    let block = "";
+
+    for (
+        let i = index;
+        i < Math.min(
+            index + 20,
+            lines.length
+        );
+        i++
+    ) {
+        block +=
+            lines[i] + "\n";
+
+        if (
+            i > index &&
+            lines[i].includes("}")
+        ) {
+            break;
+        }
+    }
+
+    return block;
+}
+
+/* =========================================================
+   ERROR DISPLAY
+========================================================= */
+
+function updateErrors() {
+    const list =
+        document.getElementById(
+            "errorList"
+        );
+
+    const badge =
+        document.getElementById(
+            "errorBadge"
+        );
+
+    if (!list || !badge) {
+        return;
+    }
+
+    const errors =
+        currentAnalysis.errors;
+
+    badge.textContent =
+        `${errors.length} ${
+            errors.length === 1
+                ? "Error"
+                : "Errors"
+        }`;
+
+    if (errors.length === 0) {
+        list.innerHTML = `
+            <div class="empty-state">
+                <div>✅</div>
+                <h3>No errors detected</h3>
+                <p>The analyzed program passed the available checks.</p>
+            </div>
+        `;
+
+        return;
+    }
+
+    list.innerHTML =
+        errors.map(error => `
+            <div class="error-card"
+                 title="Hover over this error to understand why it happened">
+
+                <div class="error-top">
+
+                    <div>
+                        <div class="error-type">
+                            🔴 ${escapeHtml(error.type)}
                         </div>
-
-                        <p>
-                            📍
-                            <strong>
-                                Line ${escapeHtml(error.line)}
-                            </strong>
-
-                            ${
-                                error.column !== "Unknown"
-                                    ? `, Column ${escapeHtml(error.column)}`
-                                    : ""
-                            }
-
-                            — Error found at this location.
-                        </p>
-
-                        <p>
-                            ${escapeHtml(error.description)}
-                        </p>
                     </div>
-                `;
-            })
-            .join("");
-    } else {
-        syntaxCards = `
-            <div class="detected-error-card">
-                <div class="error-title">
-                    <span class="error-badge">
-                        ERROR
-                    </span>
 
-                    <h3>Syntax Error</h3>
+                    <div class="error-line">
+                        Line ${error.line}
+                    </div>
+
                 </div>
 
+                <div class="error-code">
+                    ${escapeHtml(error.code)}
+                </div>
+
+                <div class="error-explanation">
+                    💡 ${escapeHtml(error.explanation)}
+                </div>
+
+            </div>
+        `).join("");
+}
+
+/* =========================================================
+   ANALYSIS FLOW ANIMATION
+========================================================= */
+
+function runAnalysisAnimation(errors) {
+    const stages = [
+        "stage-source",
+        "stage-ast",
+        "stage-data",
+        "stage-z3",
+        "stage-result"
+    ];
+
+    stages.forEach(id => {
+        const element =
+            document.getElementById(id);
+
+        if (element) {
+            element.classList.remove(
+                "active",
+                "success",
+                "error"
+            );
+        }
+    });
+
+    const trace =
+        document.getElementById(
+            "analysisTrace"
+        );
+
+    if (trace) {
+        trace.innerHTML = "";
+    }
+
+    createASTAnimationArea();
+
+    const steps = [
+        {
+            stage: "stage-source",
+            label: "SOURCE",
+            value: "Reading Java code...",
+            message:
+                "Source code received."
+        },
+
+        {
+            stage: "stage-ast",
+            label: "AST",
+            value: "Building syntax tree...",
+            message:
+                "Variables, values, conditions and operators are being classified."
+        },
+
+        {
+            stage: "stage-data",
+            label: "DATA FLOW",
+            value: "Moving values...",
+            message:
+                "Following x = 5 through the condition."
+        },
+
+        {
+            stage: "stage-z3",
+            label: "Z3",
+            value: "Checking constraints...",
+            message:
+                "Testing whether the logical condition can be satisfied."
+        },
+
+        {
+            stage: "stage-result",
+            label: "RESULT",
+            value:
+                errors.length
+                    ? "Logical error found!"
+                    : "Condition is satisfiable.",
+            message:
+                errors.length
+                    ? "Logical analysis identified a possible problem."
+                    : "The analyzed condition is satisfiable."
+        }
+    ];
+
+    let delay = 0;
+
+    steps.forEach(step => {
+        setTimeout(() => {
+            stages.forEach(id => {
+                const element =
+                    document.getElementById(id);
+
+                if (element) {
+                    element.classList.remove(
+                        "active"
+                    );
+                }
+            });
+
+            const element =
+                document.getElementById(
+                    step.stage
+                );
+
+            if (!element) {
+                return;
+            }
+
+            element.classList.add(
+                "active"
+            );
+
+            const value =
+                element.querySelector(
+                    ".stage-value"
+                );
+
+            if (value) {
+                value.textContent =
+                    step.value;
+            }
+
+            if (
+                step.stage ===
+                "stage-result"
+            ) {
+                element.classList.remove(
+                    "active"
+                );
+
+                element.classList.add(
+                    errors.length
+                        ? "error"
+                        : "success"
+                );
+            }
+
+            addTraceLine(
+                step.label,
+                step.message,
+                errors.length &&
+                step.stage ===
+                    "stage-result"
+            );
+
+            if (
+                step.stage ===
+                "stage-ast"
+            ) {
+                animateAST();
+            }
+
+        }, delay);
+
+        delay += 1100;
+    });
+}
+
+/* =========================================================
+   SYNTAX ERROR ANIMATION
+========================================================= */
+
+function runSyntaxErrorAnimation(
+    errors
+) {
+    const trace =
+        document.getElementById(
+            "analysisTrace"
+        );
+
+    if (trace) {
+        trace.innerHTML = "";
+    }
+
+    createASTAnimationArea();
+
+    const steps = [
+        [
+            "SOURCE",
+            "Source code received."
+        ],
+        [
+            "PARSER",
+            "Checking Java syntax..."
+        ],
+        [
+            "ERROR",
+            "Syntax error detected. AST and logical analysis stopped."
+        ]
+    ];
+
+    steps.forEach((step, index) => {
+        setTimeout(() => {
+            addTraceLine(
+                step[0],
+                step[1],
+                index === 2
+            );
+        }, index * 900);
+    });
+
+    const astArea =
+        document.getElementById(
+            "astAnimation"
+        );
+
+    if (astArea) {
+        astArea.innerHTML = `
+            <div class="ast-error-message">
+                <div>🚨</div>
+                <strong>Syntax Error</strong>
                 <p>
-                    The Java source code contains
-                    a syntax or parsing error.
+                    The program must be syntactically valid
+                    before the AST and Z3 analysis can continue.
                 </p>
             </div>
         `;
     }
-
-    syntaxSection = `
-        <div class="detected-errors">
-            <h2>Detected Syntax Errors</h2>
-            ${syntaxCards}
-        </div>
-    `;
 }
 
+/* =========================================================
+   AST VISUALIZATION
+========================================================= */
 
-/* =====================================================
-   LOGICAL ERROR CARDS
-   ===================================================== */
+function createASTAnimationArea() {
+    const existing =
+        document.getElementById(
+            "astAnimation"
+        );
 
-let logicalSection = "";
+    if (existing) {
+        return existing;
+    }
 
-if (hasLogicalErrors) {
-    let logicalCards = "";
+    const trace =
+        document.getElementById(
+            "analysisTrace"
+        );
 
-    if (logicalErrors.length > 0) {
-        logicalCards = logicalErrors
-            .map((error, index) => {
-                return `
-                    <div class="detected-error-card">
+    if (!trace) {
+        return null;
+    }
 
-                        <div class="error-title">
-                            <span class="error-badge">
-                                ERROR ${index + 1}
-                            </span>
+    const area =
+        document.createElement("div");
 
-                            <h3>
-                                ${escapeHtml(error.type)}
-                            </h3>
+    area.id =
+        "astAnimation";
+
+    area.innerHTML = `
+        <div class="ast-title">
+            🌳 Live AST Visualization
+        </div>
+
+        <div class="ast-subtitle">
+            Watch the program break into values,
+            variables and operators.
+        </div>
+
+        <div class="ast-tree">
+
+            <div class="ast-node ast-root">
+                IF CONDITION
+            </div>
+
+            <div class="ast-connector"></div>
+
+            <div class="ast-node ast-operator">
+                &&
+            </div>
+
+            <div class="ast-branches">
+
+                <div class="ast-branch">
+
+                    <div class="ast-node ast-operator">
+                        &gt;
+                    </div>
+
+                    <div class="ast-small-branches">
+
+                        <div
+                            class="ast-node ast-variable"
+                            data-token="x1"
+                        >
+                            x
                         </div>
 
-                        <p>
-                            📍
-                            <strong>
-                                Line ${escapeHtml(error.line)}
-                            </strong>
+                        <div
+                            class="ast-node ast-value"
+                            data-token="5"
+                        >
+                            10
+                        </div>
 
-                            — Error found at this line.
-                        </p>
+                    </div>
 
-                        <p>
-                            ${escapeHtml(error.description)}
-                        </p>
+                </div>
+
+                <div class="ast-branch">
+
+                    <div class="ast-node ast-operator">
+                        &lt;
+                    </div>
+
+                    <div class="ast-small-branches">
+
+                        <div
+                            class="ast-node ast-variable"
+                            data-token="x2"
+                        >
+                            x
+                        </div>
+
+                        <div
+                            class="ast-node ast-value"
+                            data-token="3"
+                        >
+                            3
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="ast-assignment">
+
+                <span>Variable assignment:</span>
+
+                <span class="ast-node ast-variable">
+                    x
+                </span>
+
+                <span> = </span>
+
+                <span
+                    class="ast-node ast-value"
+                >
+                    5
+                </span>
+
+            </div>
+
+        </div>
+
+        <div
+            id="astResult"
+            class="ast-result"
+        >
+            Waiting for AST analysis...
+        </div>
+    `;
+
+    trace.parentNode.insertBefore(
+        area,
+        trace
+    );
+
+    return area;
+}
+
+function animateAST() {
+    const area =
+        document.getElementById(
+            "astAnimation"
+        );
+
+    if (!area) {
+        return;
+    }
+
+    const tokens =
+        area.querySelectorAll(
+            ".ast-node"
+        );
+
+    tokens.forEach(token => {
+        token.classList.remove(
+            "ast-moving",
+            "ast-found",
+            "ast-error"
+        );
+    });
+
+    const result =
+        document.getElementById(
+            "astResult"
+        );
+
+    if (result) {
+        result.textContent =
+            "Scanning AST nodes...";
+    }
+
+    tokens.forEach((token, index) => {
+        setTimeout(() => {
+            token.classList.add(
+                "ast-moving"
+            );
+
+            setTimeout(() => {
+                token.classList.remove(
+                    "ast-moving"
+                );
+
+                token.classList.add(
+                    "ast-found"
+                );
+
+                if (result) {
+                    result.textContent =
+                        `AST node classified: ${token.textContent.trim()}`;
+                }
+            }, 450);
+
+        }, index * 650);
+    });
+
+    setTimeout(() => {
+        if (result) {
+            result.innerHTML =
+                `5 &gt; 10 → <strong>FALSE</strong> &nbsp; | &nbsp; ` +
+                `5 &lt; 3 → <strong>FALSE</strong> &nbsp; | &nbsp; ` +
+                `FALSE && FALSE → <strong>FALSE</strong>`;
+        }
+
+        const operators =
+            area.querySelectorAll(
+                ".ast-operator"
+            );
+
+        operators.forEach(operator => {
+            operator.classList.add(
+                "ast-error"
+            );
+        });
+    }, tokens.length * 650 + 600);
+}
+
+/* =========================================================
+   REPLAY
+========================================================= */
+
+function replayAnalysis() {
+    if (!currentAnalysis.code) {
+        alert(
+            "Please analyze a program first."
+        );
+
+        switchTab("code");
+
+        return;
+    }
+
+    switchTab("flow");
+
+    if (
+        currentAnalysis.syntaxErrors.length
+    ) {
+        runSyntaxErrorAnimation(
+            currentAnalysis.syntaxErrors
+        );
+
+        return;
+    }
+
+    runAnalysisAnimation(
+        currentAnalysis.errors
+    );
+}
+
+/* =========================================================
+   TRACE
+========================================================= */
+
+function addTraceLine(
+    label,
+    message,
+    error
+) {
+    const trace =
+        document.getElementById(
+            "analysisTrace"
+        );
+
+    if (!trace) {
+        return;
+    }
+
+    const line =
+        document.createElement("div");
+
+    line.className =
+        `trace-line ${
+            error
+                ? "trace-error"
+                : ""
+        }`;
+
+    const time =
+        new Date().toLocaleTimeString();
+
+    line.innerHTML =
+        `<span class="trace-time">[${time}]</span> ` +
+        `<span class="trace-label">${escapeHtml(label)}</span> ` +
+        `${escapeHtml(message)}`;
+
+    trace.appendChild(line);
+
+    trace.scrollTop =
+        trace.scrollHeight;
+}
+
+/* =========================================================
+   HISTORY
+========================================================= */
+
+function saveHistory() {
+    if (!currentAnalysis.timestamp) {
+        return;
+    }
+
+    const history =
+        JSON.parse(
+            localStorage.getItem(
+                "logicLensHistory"
+            ) || "[]"
+        );
+
+    history.unshift({
+        timestamp:
+            currentAnalysis.timestamp
+                .toLocaleString(),
+
+        lines:
+            currentAnalysis.lines,
+
+        errors:
+            currentAnalysis.errors.length,
+
+        time:
+            currentAnalysis.time
+    });
+
+    localStorage.setItem(
+        "logicLensHistory",
+        JSON.stringify(
+            history.slice(0, 10)
+        )
+    );
+}
+
+function displayHistory() {
+    const list =
+        document.getElementById(
+            "historyList"
+        );
+
+    if (!list) {
+        return;
+    }
+
+    const history =
+        JSON.parse(
+            localStorage.getItem(
+                "logicLensHistory"
+            ) || "[]"
+        );
+
+    if (!history.length) {
+        list.innerHTML = `
+            <div class="empty-state">
+                <div>🕘</div>
+                <h3>No analysis history</h3>
+                <p>Your previous analyses will appear here.</p>
+            </div>
+        `;
+
+        return;
+    }
+
+    list.innerHTML =
+        history.map(item => `
+            <div class="history-item">
+
+                <div>
+                    <strong>
+                        Analysis Session
+                    </strong>
+
+                    <small>
+                        ${escapeHtml(
+                            item.timestamp
+                        )}
+                    </small>
+                </div>
+
+                <div>
+                    ${item.lines} lines
+                </div>
+
+                <div class="history-count">
+                    ${item.errors} errors
+                </div>
+
+            </div>
+        `).join("");
+}
+
+function clearHistory() {
+    if (
+        !confirm(
+            "Clear all analysis history?"
+        )
+    ) {
+        return;
+    }
+
+    localStorage.removeItem(
+        "logicLensHistory"
+    );
+
+    displayHistory();
+}
+
+/* =========================================================
+   FINAL REPORT
+========================================================= */
+
+function updateReport() {
+    setText(
+        "reportFile",
+        "TestProgram.java"
+    );
+
+    setText(
+        "reportTime",
+        currentAnalysis.time
+    );
+
+    setText(
+        "reportLines",
+        currentAnalysis.lines
+    );
+
+    setText(
+        "reportErrors",
+        currentAnalysis.errors.length
+    );
+
+    setText(
+        "reportWarnings",
+        currentAnalysis.warnings
+    );
+
+    const result =
+        document.getElementById(
+            "reportResult"
+        );
+
+    const details =
+        document.getElementById(
+            "reportDetails"
+        );
+
+    if (!result || !details) {
+        return;
+    }
+
+    if (!currentAnalysis.code) {
+        result.className =
+            "report-result";
+
+        result.innerHTML = `
+            <div class="report-icon">
+                🔍
+            </div>
+
+            <div>
+                <span>ANALYSIS STATUS</span>
+                <h3>Waiting for analysis</h3>
+            </div>
+        `;
+
+        details.textContent =
+            "Run an analysis to generate the final report.";
+
+        return;
+    }
+
+    if (
+        currentAnalysis.syntaxErrors.length
+    ) {
+        result.className =
+            "report-result error";
+
+        result.innerHTML = `
+            <div class="report-icon">
+                🚨
+            </div>
+
+            <div>
+                <span>ANALYSIS STATUS</span>
+                <h3>
+                    Syntax error detected
+                </h3>
+            </div>
+        `;
+
+        details.innerHTML =
+            `The program contains ${
+                currentAnalysis.syntaxErrors.length
+            } syntax error(s). ` +
+            `Logical analysis was stopped until the Java syntax is corrected.`;
+
+        return;
+    }
+
+    if (
+        currentAnalysis.errors.length
+    ) {
+        result.className =
+            "report-result error";
+
+        result.innerHTML = `
+            <div class="report-icon">
+                🚨
+            </div>
+
+            <div>
+                <span>ANALYSIS STATUS</span>
+
+                <h3>
+                    ${currentAnalysis.errors.length}
+                    logical error(s) detected
+                </h3>
+            </div>
+        `;
+
+        details.innerHTML =
+            `The analysis found ${
+                currentAnalysis.errors.length
+            } logical issue(s). ` +
+            `The Errors tab provides the affected line, error type and explanation.`;
+
+    } else {
+        result.className =
+            "report-result success";
+
+        result.innerHTML = `
+            <div class="report-icon">
+                ✅
+            </div>
+
+            <div>
+                <span>ANALYSIS STATUS</span>
+
+                <h3>
+                    No logical errors detected
+                </h3>
+            </div>
+        `;
+
+        details.innerHTML =
+            "The analyzed program passed the available frontend logical checks.";
+    }
+}
+
+/* =========================================================
+   PRINT REPORT
+========================================================= */
+
+function printReport() {
+    if (!currentAnalysis.code) {
+        alert(
+            "Please analyze a program first."
+        );
+
+        return;
+    }
+
+    window.print();
+}
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function setText(
+    id,
+    value
+) {
+    const element =
+        document.getElementById(id);
+
+    if (element) {
+        element.textContent =
+            String(value);
+    }
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+function escapeRegex(value) {
+    return value.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+    );
+}
+
+function removeDuplicateErrors(
+    errors
+) {
+    const unique = [];
+
+    errors.forEach(error => {
+        const exists =
+            unique.some(item =>
+                item.line === error.line &&
+                item.type === error.type
+            );
+
+        if (!exists) {
+            unique.push(error);
+        }
+    });
+
+    return unique;
+}
+
+/* =========================================================
+   INITIAL SETUP
+========================================================= */
+
+document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+        updateLineNumbers();
+        loadExample();
+        displayHistory();
+
+        const textarea =
+            document.getElementById(
+                "codeInput"
+            );
+
+        if (textarea) {
+            textarea.addEventListener(
+                "input",
+                updateLineNumbers
+            );
+        }
+    }
+);
+/* =========================================================
+   LIVE AST CLASSIFICATION ANIMATION
+   ========================================================= */
+
+function animateAstClassification(code, errors) {
+    const animation = document.getElementById("astAnimation");
+
+    if (!animation) {
+        return;
+    }
+
+    const variableItems = document.getElementById("variableItems");
+    const valueItems = document.getElementById("valueItems");
+    const operatorItems = document.getElementById("operatorItems");
+    const logicalItems = document.getElementById("logicalItems");
+    const satisfiedItems = document.getElementById("satisfiedItems");
+    const unsatisfiedItems = document.getElementById("unsatisfiedItems");
+    const errorItems = document.getElementById("errorItems");
+
+    animation.innerHTML = "";
+
+    if (variableItems) variableItems.innerHTML = "Waiting...";
+    if (valueItems) valueItems.innerHTML = "Waiting...";
+    if (operatorItems) operatorItems.innerHTML = "Waiting...";
+    if (logicalItems) logicalItems.innerHTML = "Waiting...";
+    if (satisfiedItems) satisfiedItems.innerHTML = "Waiting...";
+    if (unsatisfiedItems) unsatisfiedItems.innerHTML = "Waiting...";
+    if (errorItems) errorItems.innerHTML = "Waiting...";
+
+    const assignmentMatches = [
+        ...code.matchAll(
+            /\bint\s+([A-Za-z_$][\w$]*)\s*=\s*(-?\d+)\s*;/g
+        )
+    ];
+
+    const variables = assignmentMatches.map(match => match[1]);
+    const values = assignmentMatches.map(match => match[2]);
+
+    const comparisonOperators = [
+        ...code.matchAll(/(>=|<=|==|!=|>|<)/g)
+    ].map(match => match[1]);
+
+    const logicalOperators = [
+        ...code.matchAll(/(&&|\|\|)/g)
+    ].map(match => match[1]);
+
+    const conditions = [
+        ...code.matchAll(/\bif\s*\((.*?)\)/g)
+    ].map(match => match[1]);
+
+    let step = 0;
+
+    function showStep(callback, delay) {
+        setTimeout(callback, delay);
+    }
+
+    showStep(() => {
+        animation.innerHTML = `
+            <div class="ast-stage">
+                <div class="ast-stage-title">
+                    STEP 1 — BUILDING AST
+                </div>
+
+                <div class="ast-tree">
+
+                    <div class="ast-tree-row">
+                        <div class="ast-node operator">IF CONDITION</div>
+                    </div>
+
+                    <div class="ast-arrow">↓</div>
+
+                    <div class="ast-tree-row">
+                        <div class="ast-node logical">
+                            ${logicalOperators[0] || "&&"}
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        `;
+
+        setClassification(
+            variableItems,
+            variables,
+            "classification-token"
+        );
+
+        setClassification(
+            valueItems,
+            values,
+            "classification-token"
+        );
+
+    }, step++ * 900);
+
+    showStep(() => {
+        const condition = conditions[0] || "x > 10 && x < 3";
+
+        const parts = condition
+            .split(/(&&|\|\|)/)
+            .map(part => part.trim())
+            .filter(Boolean);
+
+        animation.innerHTML = `
+            <div class="ast-stage">
+
+                <div class="ast-stage-title">
+                    STEP 2 — CLASSIFYING AST NODES
+                </div>
+
+                <div class="ast-tree">
+
+                    <div class="ast-tree-row">
+
+                        ${parts.map(part => {
+
+                            if (part === "&&" || part === "||") {
+                                return `
+                                    <div class="ast-node logical">
+                                        ${escapeHtml(part)}
+                                    </div>
+                                `;
+                            }
+
+                            const match = part.match(
+                                /^([A-Za-z_$][\w$]*)\s*(>=|<=|==|!=|>|<)\s*(-?\d+)$/
+                            );
+
+                            if (!match) {
+                                return `
+                                    <div class="ast-node">
+                                        ${escapeHtml(part)}
+                                    </div>
+                                `;
+                            }
+
+                            return `
+                                <div class="ast-tree-row">
+
+                                    <div class="ast-node variable">
+                                        ${escapeHtml(match[1])}
+                                    </div>
+
+                                    <div class="ast-node operator">
+                                        ${escapeHtml(match[2])}
+                                    </div>
+
+                                    <div class="ast-node value">
+                                        ${escapeHtml(match[3])}
+                                    </div>
+
+                                </div>
+                            `;
+                        }).join("")}
+
+                    </div>
+
+                </div>
+
+            </div>
+        `;
+
+        setClassification(
+            operatorItems,
+            comparisonOperators,
+            "classification-token warning"
+        );
+
+        setClassification(
+            logicalItems,
+            logicalOperators,
+            "classification-token warning"
+        );
+
+    }, step++ * 900);
+
+    showStep(() => {
+
+        const variable =
+            variables[0] || "x";
+
+        const value =
+            values[0] || "5";
+
+        const condition =
+            conditions[0] || "x > 10 && x < 3";
+
+        const evaluatedParts =
+            evaluateAstCondition(
+                condition,
+                {
+                    [variable]: Number(value)
+                }
+            );
+
+        animation.innerHTML = `
+            <div class="ast-stage">
+
+                <div class="ast-stage-title">
+                    STEP 3 — DATA FLOW & VALUE EVALUATION
+                </div>
+
+                <div class="ast-tree">
+
+                    <div class="ast-tree-row">
+
+                        <div class="ast-node variable">
+                            ${escapeHtml(variable)}
+                        </div>
+
+                        <div class="ast-arrow">→</div>
+
+                        <div class="ast-node value">
+                            ${escapeHtml(value)}
+                        </div>
+
+                    </div>
+
+                    <div class="ast-arrow">↓</div>
+
+                    <div class="ast-tree-row">
 
                         ${
-                            error.condition
-                                ? `
-                                    <p>
-                                        Condition:
-                                        <code>
-                                            ${escapeHtml(error.condition)}
-                                        </code>
-                                    </p>
-                                `
-                                : ""
+                            evaluatedParts
+                                .map(item => `
+                                    <div class="ast-node ${
+                                        item.result
+                                            ? "operator"
+                                            : "value"
+                                    }">
+                                        ${escapeHtml(item.expression)}
+                                    </div>
+                                `)
+                                .join("")
                         }
 
                     </div>
-                `;
-            })
-            .join("");
-    } else {
-        logicalCards = `
-            <div class="detected-error-card">
-                <div class="error-title">
-                    <span class="error-badge">
-                        ERROR
-                    </span>
 
-                    <h3>Logical Error</h3>
                 </div>
 
-                <p>
-                    The analyzer detected a logical
-                    problem in the Java program.
-                </p>
             </div>
         `;
-    }
 
-    logicalSection = `
-        <div class="detected-errors">
-            <h2>Detected Logical Errors</h2>
-            ${logicalCards}
-        </div>
-    `;
-}
-
-
-/* =====================================================
-   SUMMARY
-   ===================================================== */
-
-const syntaxStatus =
-    hasSyntaxErrors
-        ? `${syntaxCount || 1} Syntax Error${(syntaxCount || 1) === 1 ? "" : "s"} Found`
-        : "No Syntax Errors";
-
-const logicalStatus =
-    logicalCount > 0
-        ? `${logicalCount} Logical Error${logicalCount === 1 ? "" : "s"} Found`
-        : "No Logical Errors";
-
-
-/* =====================================================
-   FINAL HTML
-   ===================================================== */
-
-resultBox.innerHTML = `
-    <div class="result-header error-header">
-        <span>✗</span>
-
-        <div>
-            <h2>${title}</h2>
-
-            <p>${message}</p>
-        </div>
-    </div>
-
-
-    <div class="analysis-summary">
-
-        <div class="summary-card">
-            <div class="summary-icon">
-                ✗
-            </div>
-
-            <div>
-                <span>Status</span>
-
-                <strong>
-                    ${totalErrors}
-                    Error${totalErrors === 1 ? "" : "s"} Found
-                </strong>
-            </div>
-        </div>
-
-
-        <div class="summary-card">
-            <div class="summary-icon">
-                ${syntaxCount}
-            </div>
-
-            <div>
-                <span>Syntax</span>
-
-                <strong>
-                    ${syntaxStatus}
-                </strong>
-            </div>
-        </div>
-
-
-        <div class="summary-card">
-            <div class="summary-icon">
-                ${logicalCount}
-            </div>
-
-            <div>
-                <span>Logical</span>
-
-                <strong>
-                    ${logicalStatus}
-                </strong>
-            </div>
-        </div>
-
-    </div>
-
-
-    ${syntaxSection}
-
-    ${logicalSection}
-
-
-    <details class="technical-report">
-        <summary>
-            View Complete Technical Analysis Report
-        </summary>
-
-        <pre>${escapeHtml(result)}</pre>
-    </details>
-`;
-
-
-}
-
-/* =========================================================
-EXTRACT SYNTAX ERRORS
-========================================================= */
-
-function extractSyntaxErrors(result) {
-const errors = [];
-const lines = result.split("\n");
-
-
-for (const line of lines) {
-    const currentLine = line.trim();
-
-    const locationMatch = currentLine.match(
-        /^Line\s+(\d+),\s*Column\s+(\d+):\s*(.*)$/i
-    );
-
-    if (!locationMatch) {
-        continue;
-    }
-
-    const lineNumber = locationMatch[1];
-    const columnNumber = locationMatch[2];
-
-    let description = locationMatch[3].trim();
-
-    if (!description) {
-        description = "Invalid Java syntax.";
-    }
-
-    if (description.length > 500) {
-        description =
-            description.substring(0, 500) + "...";
-    }
-
-    errors.push({
-        line: lineNumber,
-        column: columnNumber,
-        description: description
-    });
-}
-
-return removeDuplicateSyntaxErrors(errors);
-
-
-}
-
-/* =========================================================
-REMOVE DUPLICATE SYNTAX ERRORS
-========================================================= */
-
-function removeDuplicateSyntaxErrors(errors) {
-const uniqueErrors = [];
-const seen = new Set();
-
-
-for (const error of errors) {
-    const key =
-        error.line +
-        "|" +
-        error.column +
-        "|" +
-        error.description;
-
-    if (!seen.has(key)) {
-        seen.add(key);
-        uniqueErrors.push(error);
-    }
-}
-
-return uniqueErrors;
-
-
-}
-
-/* =========================================================
-EXTRACT LOGICAL ERRORS
-========================================================= */
-
-function extractErrors(result) {
-const errors = [];
-const lines = result.split("\n");
-
-
-for (let i = 0; i < lines.length; i++) {
-    const current = lines[i].trim();
-
-    if (!current.startsWith("Error Type:")) {
-        continue;
-    }
-
-    const type =
-        current.substring("Error Type:".length).trim();
-
-    let lineNumber = "Unknown";
-    let condition = "";
-    let description = "";
-
-    /*
-     * Read ONLY the current error block.
-     */
-    for (let j = i + 1; j < lines.length; j++) {
-        const text = lines[j].trim();
-
-        /*
-         * A new error begins.
-         */
-        if (
-            text.startsWith("Error Type:")
-            ||
-            text.startsWith("Logical Error Detected!")
-        ) {
-            break;
-        }
-
-        /*
-         * Stop at the final report.
-         */
-        if (
-            text.startsWith("FINAL ANALYSIS REPORT")
-            ||
-            text.startsWith("Only logical errors were detected.")
-            ||
-            text.startsWith("No logical errors were detected.")
-            ||
-            text.startsWith("No syntax errors were detected.")
-            ||
-            text.startsWith("Syntax errors were detected.")
-            ||
-            text.startsWith("Logical analysis was completed.")
-            ||
-            text.startsWith("Logical analysis was also performed.")
-        ) {
-            break;
-        }
-
-        /*
-         * VERY IMPORTANT:
-         *
-         * If another IF / ELSE / LOOP analysis line appears,
-         * it belongs to the next analysis block, not this error.
-         *
-         * This fixes:
-         *
-         * Condition 'age < 10' is false...
-         * IF at line 12: marks > 90
-         */
-        if (
-            /^(IF|ELSE IF|WHILE|FOR|DO-WHILE)\s+at\s+line\s+\d+:/i.test(text)
-        ) {
-            break;
-        }
-
-        /*
-         * Read error line.
-         */
-        const lineMatch = text.match(
-            /^Line:\s*(\d+)/i
+        const satisfied =
+            evaluatedParts
+                .filter(item => item.result === true)
+                .map(item => item.expression);
+
+        const unsatisfied =
+            evaluatedParts
+                .filter(item => item.result === false)
+                .map(item => item.expression);
+
+        setClassification(
+            satisfiedItems,
+            satisfied,
+            "classification-token good"
         );
 
-        if (lineMatch) {
-            lineNumber = lineMatch[1];
-            continue;
-        }
-
-        /*
-         * Read condition.
-         */
-        const conditionMatch = text.match(
-            /^Condition:\s*(.*)$/i
+        setClassification(
+            unsatisfiedItems,
+            unsatisfied,
+            "classification-token bad"
         );
 
-        if (conditionMatch) {
-            condition = conditionMatch[1].trim();
-            continue;
+    }, step++ * 900);
+
+    showStep(() => {
+
+        const hasErrors =
+            errors && errors.length > 0;
+
+        animation.innerHTML = `
+            <div class="ast-stage">
+
+                <div class="ast-stage-title">
+                    STEP 4 — FINAL LOGICAL DECISION
+                </div>
+
+                <div class="ast-tree">
+
+                    <div class="ast-node logical">
+                        LOGICAL CONDITION
+                    </div>
+
+                    <div class="ast-arrow">↓</div>
+
+                    <div class="ast-result ${
+                        hasErrors
+                            ? "unsatisfied"
+                            : "satisfied"
+                    }">
+
+                        ${
+                            hasErrors
+                                ? "🚨 LOGICAL ERROR PREDICTED"
+                                : "✅ CONDITION SATISFIED"
+                        }
+
+                    </div>
+
+                </div>
+
+            </div>
+        `;
+
+        if (errorItems) {
+            errorItems.innerHTML = hasErrors
+                ? `<span class="classification-token bad">
+                       ${errors.length} issue(s) detected
+                   </span>`
+                : `<span class="classification-token good">
+                       No logical issue detected
+                   </span>`;
         }
 
-        /*
-         * Ignore technical information.
-         */
-        if (
-            text.startsWith("Known variable values:")
-            ||
-            text.startsWith("Generated Constraint:")
-            ||
-            text.startsWith("Z3 Result:")
-            ||
-            text === "----------------------------------------"
-            ||
-            text === ""
-        ) {
-            continue;
-        }
+    }, step++ * 900);
+}
 
-        /*
-         * Ignore headings.
-         */
-        if (
-            text.startsWith("LOGICAL ERROR ANALYSIS")
-            ||
-            text.startsWith("LOGICAL ANALYSIS")
-            ||
-            text.startsWith("BRANCH ANALYSIS")
-            ||
-            text.startsWith("NESTED IF ANALYSIS")
-            ||
-            text.startsWith("PROGRAM-ORDER DATA-FLOW ANALYSIS")
-            ||
-            text.startsWith("IF / ELSE / LOOP ANALYSIS")
-            ||
-            text.startsWith("STATIC ANALYSIS TOOL")
-        ) {
-            continue;
-        }
 
-        /*
-         * Stop at separator.
-         */
-        if (/^={5,}$/.test(text)) {
-            break;
-        }
-
-        /*
-         * Add description.
-         */
-        if (description.length === 0) {
-            description = text;
-        } else {
-            description += " " + text;
-        }
+function setClassification(element, values, className) {
+    if (!element) {
+        return;
     }
 
-    description =
-        cleanLogicalDescription(description);
-
-    if (!description) {
-        description =
-            "Logical problem detected for this condition.";
+    if (!values || values.length === 0) {
+        element.innerHTML = "None";
+        return;
     }
 
-    errors.push({
-        line: lineNumber,
-        type: type,
-        condition: condition,
-        description: description
+    const uniqueValues = [...new Set(values)];
+
+    element.innerHTML =
+        uniqueValues
+            .map((value, index) => `
+                <span
+                    class="${className}"
+                    style="animation-delay:${index * 100}ms"
+                >
+                    ${escapeHtml(value)}
+                </span>
+            `)
+            .join("");
+}
+
+
+function evaluateAstCondition(condition, variables) {
+    const results = [];
+
+    const parts = condition
+        .split(/(&&|\|\|)/)
+        .map(part => part.trim())
+        .filter(part => part !== "&&" && part !== "||");
+
+    parts.forEach(part => {
+
+        let expression = part;
+
+        Object.keys(variables).forEach(variable => {
+
+            const regex =
+                new RegExp(
+                    `\\b${escapeRegex(variable)}\\b`,
+                    "g"
+                );
+
+            expression =
+                expression.replace(
+                    regex,
+                    String(variables[variable])
+                );
+        });
+
+        const match =
+            expression.match(
+                /^(-?\d+)\s*(>=|<=|==|!=|>|<)\s*(-?\d+)$/
+            );
+
+        if (!match) {
+            return;
+        }
+
+        const left = Number(match[1]);
+        const operator = match[2];
+        const right = Number(match[3]);
+
+        let result = false;
+
+        switch (operator) {
+
+            case ">":
+                result = left > right;
+                break;
+
+            case "<":
+                result = left < right;
+                break;
+
+            case ">=":
+                result = left >= right;
+                break;
+
+            case "<=":
+                result = left <= right;
+                break;
+
+            case "==":
+                result = left === right;
+                break;
+
+            case "!=":
+                result = left !== right;
+                break;
+        }
+
+        results.push({
+            expression:
+                `${left} ${operator} ${right} → ${
+                    result ? "TRUE" : "FALSE"
+                }`,
+            result
+        });
+
     });
-}
 
-return removeDuplicateLogicalErrors(errors);
-
-
-}
-
-/* =========================================================
-REMOVE DUPLICATE LOGICAL ERRORS
-========================================================= */
-
-function removeDuplicateLogicalErrors(errors) {
-const uniqueErrors = [];
-const seen = new Set();
-
-
-for (const error of errors) {
-    const key =
-        error.line +
-        "|" +
-        error.type +
-        "|" +
-        error.condition;
-
-    if (!seen.has(key)) {
-        seen.add(key);
-        uniqueErrors.push(error);
-    }
-}
-
-return uniqueErrors;
-
-
-}
-
-/* =========================================================
-CLEAN LOGICAL DESCRIPTION
-========================================================= */
-
-function cleanLogicalDescription(description) {
-if (!description) {
-return "";
-}
-
-
-let cleaned = description;
-
-/*
- * Remove accidental next-analysis content.
- */
-cleaned = cleaned.replace(
-    /\s+(IF|ELSE IF|WHILE|FOR|DO-WHILE)\s+at\s+line\s+\d+:.*$/i,
-    ""
-);
-
-/*
- * Remove report sections.
- */
-const stopPatterns = [
-    "========================================",
-    "FINAL ANALYSIS REPORT",
-    "Only logical errors were detected.",
-    "No logical errors were detected.",
-    "No syntax errors were detected.",
-    "Syntax errors were detected.",
-    "Logical analysis was completed.",
-    "Logical analysis was also performed."
-];
-
-for (const pattern of stopPatterns) {
-    const index = cleaned.indexOf(pattern);
-
-    if (index >= 0) {
-        cleaned = cleaned.substring(0, index);
-    }
-}
-
-return cleaned
-    .replace(/\s+/g, " ")
-    .trim();
-
-
-}
-
-/* =========================================================
-DISPLAY SUCCESS RESULT
-========================================================= */
-
-function displaySuccessResult(result) {
-const resultBox =
-document.getElementById("resultBox");
-
-
-resultBox.innerHTML = `
-    <div class="result-header success-header">
-        <span>✓</span>
-
-        <div>
-            <h2>Analysis Completed</h2>
-
-            <p>
-                No syntax or logical errors were detected.
-            </p>
-        </div>
-    </div>
-
-
-    <div class="analysis-summary">
-
-        <div class="summary-card">
-            <div class="summary-icon">
-                ✓
-            </div>
-
-            <div>
-                <span>Status</span>
-
-                <strong>
-                    No Errors Found
-                </strong>
-            </div>
-        </div>
-
-
-        <div class="summary-card">
-            <div class="summary-icon">
-                0
-            </div>
-
-            <div>
-                <span>Errors</span>
-
-                <strong>
-                    0 Errors
-                </strong>
-            </div>
-        </div>
-
-
-        <div class="summary-card">
-            <div class="summary-icon">
-                ✓
-            </div>
-
-            <div>
-                <span>Syntax</span>
-
-                <strong>
-                    No Syntax Errors
-                </strong>
-            </div>
-        </div>
-
-    </div>
-
-
-    <details class="technical-report">
-        <summary>
-            View Complete Technical Analysis Report
-        </summary>
-
-        <pre>${escapeHtml(result)}</pre>
-    </details>
-`;
-
-
-}
-
-/* =========================================================
-CLEAR CODE
-========================================================= */
-
-function clearCode() {
-document.getElementById("codeInput").value = "";
-
-
-document.getElementById("resultBox").innerHTML = `
-    <div class="empty-result">
-
-        <div class="empty-icon">
-            🔍
-        </div>
-
-        <h3>
-            Ready for Analysis
-        </h3>
-
-        <p>
-            Enter Java code above and click
-            <b>Analyze Code</b>.
-        </p>
-
-    </div>
-`;
-
-
-}
-
-/* =========================================================
-HTML ESCAPE
-========================================================= */
-
-function escapeHtml(text) {
-const div = document.createElement("div");
-
-
-div.textContent =
-    text == null
-        ? ""
-        : String(text);
-
-return div.innerHTML;
-
-
+    return results;
 }

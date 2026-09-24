@@ -1,136 +1,537 @@
-<!DOCTYPE html>
+<!doctype html>
+
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Static Analysis Tool</title>
-    <link rel="stylesheet" href="style.css">
-</head>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LogicLens — Logical Error Detector</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
 
-<body>
-
-<header>
-    <div class="header-content">
-        <h1>Static Analysis Tool</h1>
-        <p>Detect Syntax and Logical Errors in Java Programs</p>
-    </div>
-</header>
-
-<main>
-
-    <section class="card">
-
-        <div class="section-title">
-            <div>
-                <h2>Java Code Input</h2>
-                <span class="badge">JAVA</span>
-            </div>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-icon">⌘</div>
+        <div>
+          <h1>LogicLens</h1>
+          <span>Static Logical Error Detector</span>
         </div>
+      </div>
 
-        <textarea
-            id="codeInput"
-            spellcheck="false"
-            placeholder="Paste your Java program here..."
->public class TestProgram {
+      <div class="header-status">
+        <span class="status-dot"></span>
+        Analyzer Ready
+      </div>
+    </header>
 
-    public static void main(String[] args) {
+    <nav class="tabs">
+      <button class="tab active" data-tab="dashboard">🏠 Dashboard</button>
+      <button class="tab" data-tab="code">💻 Code Input</button>
+      <button class="tab" data-tab="flow">🔬 Analysis Flow</button>
+      <button class="tab" data-tab="errors">🚨 Errors</button>
+      <button class="tab" data-tab="history">🕘 History</button>
+      <button class="tab" data-tab="report">📊 Final Report</button>
+    </nav>
 
-        int age = 20;
+    <main>
+      <!-- DASHBOARD -->
+      <section id="dashboard" class="page active-page">
+        <div class="hero">
+          <div>
+            <p class="eyebrow">INTELLIGENT STATIC ANALYSIS</p>
+            <h2>Understand what your code is doing.</h2>
+            <p>
+              LogicLens analyzes Java programs using
+              <strong
+                >AST analysis, data-flow analysis and Z3 constraints</strong
+              >
+              to identify possible logical errors.
+            </p>
 
-        if (age &lt; 10) {
-            System.out.println("Child");
-        }
-    }
-}</textarea>
-
-        <div class="button-row">
-            <button id="analyzeButton" onclick="analyzeCode()">
-                Analyze Code
+            <button class="primary-btn" onclick="switchTab('code')">
+              Start Analysis →
             </button>
+          </div>
 
-            <button class="clear-button" onclick="clearCode()">
-                Clear
+          <div class="hero-visual">
+            <div class="orbit orbit-one"></div>
+            <div class="orbit orbit-two"></div>
+            <div class="core">Z3</div>
+            <div class="floating-node node-one">x = 5</div>
+            <div class="floating-node node-two">x &gt; 10</div>
+            <div class="floating-node node-three">AST</div>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span>📄</span>
+            <strong id="dashboardLines">0</strong>
+            <small>Lines of Code</small>
+          </div>
+
+          <div class="stat-card">
+            <span>🔍</span>
+            <strong id="dashboardErrors">0</strong>
+            <small>Logical Errors</small>
+          </div>
+
+          <div class="stat-card">
+            <span>⏱️</span>
+            <strong id="dashboardTime">--</strong>
+            <small>Analysis Time</small>
+          </div>
+
+          <div class="stat-card">
+            <span>🧠</span>
+            <strong>3</strong>
+            <small>Analysis Engines</small>
+          </div>
+        </div>
+
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="feature-icon">🌳</div>
+            <h3>AST Explorer</h3>
+            <p>
+              Watch your source code transform into an abstract syntax tree.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">🔄</div>
+            <h3>Data Flow</h3>
+            <p>
+              Follow variables and values as they move through your program.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">🧠</div>
+            <h3>Z3 Solver</h3>
+            <p>
+              Visualize how constraints are checked for logical consistency.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">🎬</div>
+            <h3>Analysis Replay</h3>
+            <p>Replay the complete reasoning process step by step.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- CODE INPUT -->
+      <section id="code" class="page">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">STEP 01</p>
+            <h2>Code Input</h2>
+            <p>Paste a Java program and inspect it before analysis.</p>
+          </div>
+
+          <div class="code-actions">
+            <button class="secondary-btn" onclick="loadExample()">
+              Load Example
             </button>
+            <button class="primary-btn" onclick="startAnalysis()">
+              ▶ Analyze Code
+            </button>
+          </div>
         </div>
 
-    </section>
+        <div class="editor-card">
+          <div class="editor-toolbar">
+            <span class="file-name">TestProgram.java</span>
+            <span id="lineCount">0 lines</span>
+          </div>
 
-
-    <section class="card">
-
-        <div class="section-title">
-            <div>
-                <h2>Analysis Results</h2>
-                <span class="badge">REPORT</span>
-            </div>
+          <div class="editor">
+            <div id="lineNumbers" class="line-numbers">1</div>
+            <textarea
+              id="codeInput"
+              spellcheck="false"
+              oninput="updateLineNumbers()"
+              placeholder="Paste your Java program here..."
+            ></textarea>
+          </div>
         </div>
 
-        <div id="resultBox" class="result-box">
-            <div class="empty-result">
-                <div class="empty-icon">🔍</div>
-                <h3>Ready for Analysis</h3>
-                <p>Enter Java code above and click <b>Analyze Code</b>.</p>
-            </div>
+        <div class="input-info">
+          <div>
+            <strong>💡 Tip</strong>
+            <span>Try a condition such as <code>if (x &gt; 10)</code>.</span>
+          </div>
+
+          <div>
+            <strong>🔴 Error visualization</strong>
+            <span>Detected logical errors will appear in the Errors tab.</span>
+          </div>
         </div>
+      </section>
 
-    </section>
+      <!-- ANALYSIS FLOW -->
+      <section id="flow" class="page">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">STEP 02</p>
+            <h2>Analysis Flow</h2>
+            <p>Watch the reasoning process move from source code to Z3.</p>
+          </div>
 
-
-    <section class="card">
-
-        <h2>Analysis Pipeline</h2>
+          <button class="primary-btn" onclick="replayAnalysis()">
+            ↻ Replay Animation
+          </button>
+        </div>
 
         <div class="pipeline">
+          <div class="pipeline-stage" id="stage-source">
+            <div class="stage-icon">📝</div>
+            <h3>Source Code</h3>
+            <p>Java program</p>
+            <div class="stage-value" id="flowSource">Waiting...</div>
+          </div>
 
-            <div class="pipeline-step">
-                <div class="step-number">1</div>
-                <h3>JavaParser</h3>
-                <p>AST Generation</p>
-            </div>
+          <div class="flow-arrow">→</div>
 
-            <div class="arrow">→</div>
+          <div class="pipeline-stage" id="stage-ast">
+            <div class="stage-icon">🌳</div>
+            <h3>AST</h3>
+            <p>Syntax structure</p>
+            <div class="stage-value" id="flowAst">Waiting...</div>
+          </div>
 
-            <div class="pipeline-step">
-                <div class="step-number">2</div>
-                <h3>Data Flow</h3>
-                <p>Variable Analysis</p>
-            </div>
+          <div class="flow-arrow">→</div>
 
-            <div class="arrow">→</div>
+          <div class="pipeline-stage" id="stage-data">
+            <div class="stage-icon">🔄</div>
+            <h3>Data Flow</h3>
+            <p>Values & variables</p>
+            <div class="stage-value" id="flowData">Waiting...</div>
+          </div>
 
-            <div class="pipeline-step">
-                <div class="step-number">3</div>
-                <h3>Constraints</h3>
-                <p>Constraint Generation</p>
-            </div>
+          <div class="flow-arrow">→</div>
 
-            <div class="arrow">→</div>
+          <div class="pipeline-stage" id="stage-z3">
+            <div class="stage-icon">🧠</div>
+            <h3>Z3</h3>
+            <p>Constraint solver</p>
+            <div class="stage-value" id="flowZ3">Waiting...</div>
+          </div>
 
-            <div class="pipeline-step">
-                <div class="step-number">4</div>
-                <h3>Z3 Solver</h3>
-                <p>Logical Verification</p>
-            </div>
+          <div class="flow-arrow">→</div>
 
-            <div class="arrow">→</div>
-
-            <div class="pipeline-step">
-                <div class="step-number">5</div>
-                <h3>Report</h3>
-                <p>Error Detection</p>
-            </div>
-
+          <div class="pipeline-stage" id="stage-result">
+            <div class="stage-icon">🎯</div>
+            <h3>Result</h3>
+            <p>Logical decision</p>
+            <div class="stage-value" id="flowResult">Waiting...</div>
+          </div>
         </div>
 
-    </section>
+        <div class="animation-console">
+          <div class="console-header"><span>●</span> Live Analysis Trace</div>
 
-</main>
+          <!-- LIVE AST VISUALIZATION -->
 
-<footer>
-    <p>Static Analysis Tool | Logical Error Detection Project</p>
-</footer>
+          <div class="ast-visualization-box">
+            <div class="ast-box-header">
+              <div>
+                <div class="ast-box-title">🌳 Live AST Classification</div>
+                <p>
+                  Watch variables, values and operators move through the
+                  analysis.
+                </p>
+              </div>
 
-<script src="app.js"></script>
+              <span class="ast-live-badge">● LIVE</span>
+            </div>
 
-</body>
+            <div id="astAnimation" class="ast-animation">
+              <div class="ast-placeholder">
+                Run an analysis to visualize the program structure.
+              </div>
+            </div>
+
+            <div class="classification-grid">
+              <div class="classification-card variable-card">
+                <span class="classification-icon">🔵</span>
+                <strong>VARIABLES</strong>
+                <div id="variableItems">Waiting...</div>
+              </div>
+
+              <div class="classification-card value-card">
+                <span class="classification-icon">🟣</span>
+                <strong>VALUES</strong>
+                <div id="valueItems">Waiting...</div>
+              </div>
+
+              <div class="classification-card operator-card">
+                <span class="classification-icon">🟠</span>
+                <strong>COMPARISON OPERATORS</strong>
+                <div id="operatorItems">Waiting...</div>
+              </div>
+
+              <div class="classification-card logical-card">
+                <span class="classification-icon">🟡</span>
+                <strong>LOGICAL OPERATORS</strong>
+                <div id="logicalItems">Waiting...</div>
+              </div>
+
+              <div class="classification-card satisfied-card">
+                <span class="classification-icon">🟢</span>
+                <strong>SATISFIED</strong>
+                <div id="satisfiedItems">Waiting...</div>
+              </div>
+
+              <div class="classification-card unsatisfied-card">
+                <span class="classification-icon">🔴</span>
+                <strong>UNSATISFIED</strong>
+                <div id="unsatisfiedItems">Waiting...</div>
+              </div>
+
+              <div class="classification-card prediction-card">
+                <span class="classification-icon">🚨</span>
+                <strong>ERROR PREDICTION</strong>
+                <div id="errorItems">Waiting...</div>
+              </div>
+            </div>
+          </div>
+          <div class="ast-tree-panel">
+            <div class="ast-tree-header">
+              <div>
+                <h3>🌳 Live AST Visualization</h3>
+                <p>
+                  Watch the program break into values, variables and operators.
+                </p>
+              </div>
+              <span class="ast-live-badge">● LIVE</span>
+            </div>
+
+            <div class="ast-tree-content">
+              <div class="ast-tree">
+                <div class="ast-node ast-condition">
+                  <span class="ast-node-icon">⌘</span>
+                  <span>IF CONDITION</span>
+                </div>
+
+                <div class="ast-connector vertical"></div>
+
+                <div class="ast-node ast-logical">
+                  <span>&amp;&amp;</span>
+                </div>
+
+                <div class="ast-branches">
+                  <div class="ast-branch">
+                    <div class="ast-connector vertical"></div>
+
+                    <div class="ast-node ast-comparison">
+                      <span>&gt;</span>
+                    </div>
+
+                    <div class="ast-children">
+                      <div class="ast-node ast-variable">
+                        <span>x</span>
+                      </div>
+
+                      <div class="ast-node ast-value">
+                        <span>10</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="ast-branch">
+                    <div class="ast-connector vertical"></div>
+
+                    <div class="ast-node ast-comparison">
+                      <span>&lt;</span>
+                    </div>
+
+                    <div class="ast-children">
+                      <div class="ast-node ast-variable">
+                        <span>x</span>
+                      </div>
+
+                      <div class="ast-node ast-value">
+                        <span>3</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="ast-tree-arrow">→</div>
+
+              <div class="ast-tree-summary">
+                <div class="tree-summary-card variables">
+                  <span class="summary-dot"></span>
+                  <strong>VARIABLES</strong>
+                  <div class="summary-values">
+                    <span>x</span>
+                  </div>
+                </div>
+
+                <div class="tree-summary-card values">
+                  <span class="summary-dot"></span>
+                  <strong>VALUES</strong>
+                  <div class="summary-values">
+                    <span>5</span>
+                    <span>10</span>
+                    <span>3</span>
+                  </div>
+                </div>
+
+                <div class="tree-summary-card operators">
+                  <span class="summary-dot"></span>
+                  <strong>COMPARISON OPERATORS</strong>
+                  <div class="summary-values">
+                    <span>&gt;</span>
+                    <span>&lt;</span>
+                  </div>
+                </div>
+
+                <div class="tree-summary-card logical">
+                  <span class="summary-dot"></span>
+                  <strong>LOGICAL OPERATORS</strong>
+                  <div class="summary-values">
+                    <span>&amp;&amp;</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="analysisTrace">
+            <div class="trace-empty">
+              Run an analysis to see the reasoning process.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ERRORS -->
+      <section id="errors" class="page">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">STEP 03</p>
+            <h2>Error Explorer</h2>
+            <p>Inspect detected logical problems and their explanations.</p>
+          </div>
+
+          <div class="error-summary">
+            <span id="errorBadge">0 Errors</span>
+          </div>
+        </div>
+
+        <div id="errorList" class="error-list">
+          <div class="empty-state">
+            <div>✅</div>
+            <h3>No analysis results yet</h3>
+            <p>Analyze a program to see logical errors here.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- HISTORY -->
+      <section id="history" class="page">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">STEP 04</p>
+            <h2>Analysis History</h2>
+            <p>Keep track of your previous analysis sessions.</p>
+          </div>
+
+          <button class="secondary-btn" onclick="clearHistory()">
+            Clear History
+          </button>
+        </div>
+
+        <div id="historyList" class="history-list">
+          <div class="empty-state">
+            <div>🕘</div>
+            <h3>No analysis history</h3>
+            <p>Your previous analyses will appear here.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- FINAL REPORT -->
+      <section id="report" class="page">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">STEP 05</p>
+            <h2>Final Analysis Report</h2>
+            <p>A clear summary of the complete analysis.</p>
+          </div>
+
+          <button class="primary-btn" onclick="printReport()">
+            🖨 Print Report
+          </button>
+        </div>
+
+        <div class="report-header">
+          <div>
+            <span>PROJECT</span>
+            <strong>LogicLens</strong>
+          </div>
+
+          <div>
+            <span>FILE</span>
+            <strong id="reportFile">TestProgram.java</strong>
+          </div>
+
+          <div>
+            <span>TIME</span>
+            <strong id="reportTime">--</strong>
+          </div>
+        </div>
+
+        <div class="report-result" id="reportResult">
+          <div class="report-icon">🔍</div>
+          <div>
+            <span>ANALYSIS STATUS</span>
+            <h3>Waiting for analysis</h3>
+          </div>
+        </div>
+
+        <div class="report-grid">
+          <div class="report-card">
+            <span>Lines of Code</span>
+            <strong id="reportLines">0</strong>
+          </div>
+
+          <div class="report-card">
+            <span>Errors</span>
+            <strong id="reportErrors">0</strong>
+          </div>
+
+          <div class="report-card">
+            <span>Warnings</span>
+            <strong id="reportWarnings">0</strong>
+          </div>
+
+          <div class="report-card">
+            <span>Analysis Engine</span>
+            <strong>AST + Z3</strong>
+          </div>
+        </div>
+
+        <div class="report-details">
+          <h3>Analysis Summary</h3>
+          <div id="reportDetails">
+            Run an analysis to generate the final report.
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>LogicLens</span>
+      <span>AST • Data Flow • Z3</span>
+      <span>Static Analysis Project</span>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
 </html>
