@@ -1,3 +1,4 @@
+
 package com.project.visualization;
 
 import javax.swing.*;
@@ -15,13 +16,18 @@ public class VisualizationTab extends JFrame {
     private final JLabel clockLabel = new JLabel();
     private final JLabel iterationLabel =
             new JLabel("Iteration: 0");
+
     private final JLabel resultLabel =
             new JLabel("Z3 Result: Not evaluated");
 
     private final JPanel boxesPanel =
-            new JPanel(new FlowLayout(
-                    FlowLayout.LEFT, 12, 12
-            ));
+            new JPanel(
+                    new FlowLayout(
+                            FlowLayout.LEFT,
+                            15,
+                            15
+                    )
+            );
 
     private List<VisualizationEvent> events;
 
@@ -35,30 +41,44 @@ public class VisualizationTab extends JFrame {
         );
 
         setSize(1250, 780);
+
         setLocationRelativeTo(null);
-        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+
+        setDefaultCloseOperation(
+                JFrame.DISPOSE_ON_CLOSE
+        );
 
         buildUI();
+
         startClock();
     }
 
     private void buildUI() {
 
         JPanel root =
-                new JPanel(new BorderLayout(10, 10));
+                new JPanel(
+                        new BorderLayout(10, 10)
+                );
 
         root.setBorder(
-                new EmptyBorder(10, 10, 10, 10)
+                new EmptyBorder(
+                        10,
+                        10,
+                        10,
+                        10
+                )
         );
 
         setContentPane(root);
 
-        // =========================
+        // =====================================================
         // HEADER
-        // =========================
+        // =====================================================
 
         JPanel header =
-                new JPanel(new BorderLayout());
+                new JPanel(
+                        new BorderLayout()
+                );
 
         JLabel title =
                 new JLabel(
@@ -81,12 +101,139 @@ public class VisualizationTab extends JFrame {
                 )
         );
 
-        header.add(title, BorderLayout.WEST);
-        header.add(clockLabel, BorderLayout.EAST);
+        header.add(
+                title,
+                BorderLayout.WEST
+        );
 
-        // =========================
+        header.add(
+                clockLabel,
+                BorderLayout.EAST
+        );
+
+        // =====================================================
+        // SOURCE CODE
+        // =====================================================
+
+        sourceArea.setFont(
+                new Font(
+                        "Monospaced",
+                        Font.PLAIN,
+                        15
+                )
+        );
+
+        sourceArea.setLineWrap(false);
+
+        sourceArea.setText(
+                "int age = 10;\n" +
+                "int count = 0;\n" +
+                "\n" +
+                "while (count < 3) {\n" +
+                "    count++;\n" +
+                "}\n" +
+                "\n" +
+                "if (age > 20) {\n" +
+                "    System.out.println(age);\n" +
+                "}"
+        );
+
+        JScrollPane sourceScroll =
+                new JScrollPane(
+                        sourceArea
+                );
+
+        sourceScroll.setBorder(
+                BorderFactory.createTitledBorder(
+                        "SOURCE CODE"
+                )
+        );
+
+        // =====================================================
+        // ANALYSIS EVENTS
+        // =====================================================
+
+        eventArea.setEditable(false);
+
+        eventArea.setFont(
+                new Font(
+                        "Monospaced",
+                        Font.PLAIN,
+                        14
+                )
+        );
+
+        eventArea.setLineWrap(true);
+
+        eventArea.setWrapStyleWord(true);
+
+        JScrollPane eventScroll =
+                new JScrollPane(
+                        eventArea
+                );
+
+        eventScroll.setBorder(
+                BorderFactory.createTitledBorder(
+                        "ANALYSIS EVENTS"
+                )
+        );
+
+        // =====================================================
+        // SPLIT SCREEN
+        // =====================================================
+
+        JSplitPane split =
+                new JSplitPane(
+                        JSplitPane.HORIZONTAL_SPLIT,
+                        sourceScroll,
+                        eventScroll
+                );
+
+        split.setDividerLocation(600);
+
+        split.setResizeWeight(0.5);
+
+        root.add(
+                split,
+                BorderLayout.CENTER
+        );
+
+        // =====================================================
+        // VISUAL PROGRAM STATE
+        // =====================================================
+
+        boxesPanel.setBorder(
+                BorderFactory.createTitledBorder(
+                        "VISUAL PROGRAM STATE"
+                )
+        );
+
+        boxesPanel.setBackground(
+                UIManager.getColor(
+                        "Panel.background"
+                )
+        );
+
+        JScrollPane boxScroll =
+                new JScrollPane(
+                        boxesPanel
+                );
+
+        boxScroll.setPreferredSize(
+                new Dimension(
+                        1000,
+                        190
+                )
+        );
+
+        root.add(
+                boxScroll,
+                BorderLayout.SOUTH
+        );
+
+        // =====================================================
         // CONTROLS
-        // =========================
+        // =====================================================
 
         JPanel controls =
                 new JPanel(
@@ -155,103 +302,29 @@ public class VisualizationTab extends JFrame {
         controls.add(resultLabel);
 
         JPanel top =
-                new JPanel(new BorderLayout());
-
-        top.add(header, BorderLayout.NORTH);
-        top.add(controls, BorderLayout.SOUTH);
-
-        root.add(top, BorderLayout.NORTH);
-
-        // =========================
-        // SOURCE
-        // =========================
-
-        sourceArea.setFont(
-                new Font(
-                        "Monospaced",
-                        Font.PLAIN,
-                        15
-                )
-        );
-
-        sourceArea.setText(
-                "int age = 10;\n" +
-                "int count = 0;\n" +
-                "\n" +
-                "while (count < 3) {\n" +
-                "    count++;\n" +
-                "}\n" +
-                "\n" +
-                "if (age > 20) {\n" +
-                "    System.out.println(age);\n" +
-                "}"
-        );
-
-        JScrollPane sourceScroll =
-                new JScrollPane(sourceArea);
-
-        sourceScroll.setBorder(
-                BorderFactory.createTitledBorder(
-                        "SOURCE CODE"
-                )
-        );
-
-        // =========================
-        // EVENTS
-        // =========================
-
-        eventArea.setEditable(false);
-
-        eventArea.setFont(
-                new Font(
-                        "Monospaced",
-                        Font.PLAIN,
-                        14
-                )
-        );
-
-        JScrollPane eventScroll =
-                new JScrollPane(eventArea);
-
-        eventScroll.setBorder(
-                BorderFactory.createTitledBorder(
-                        "ANALYSIS EVENTS"
-                )
-        );
-
-        JSplitPane split =
-                new JSplitPane(
-                        JSplitPane.HORIZONTAL_SPLIT,
-                        sourceScroll,
-                        eventScroll
+                new JPanel(
+                        new BorderLayout()
                 );
 
-        split.setDividerLocation(570);
-
-        root.add(split, BorderLayout.CENTER);
-
-        // =========================
-        // VISUAL STATE
-        // =========================
-
-        boxesPanel.setBorder(
-                BorderFactory.createTitledBorder(
-                        "VISUAL PROGRAM STATE"
-                )
+        top.add(
+                header,
+                BorderLayout.NORTH
         );
 
-        JScrollPane boxScroll =
-                new JScrollPane(boxesPanel);
-
-        boxScroll.setPreferredSize(
-                new Dimension(1000, 170)
+        top.add(
+                controls,
+                BorderLayout.SOUTH
         );
 
         root.add(
-                boxScroll,
-                BorderLayout.SOUTH
+                top,
+                BorderLayout.NORTH
         );
     }
+
+    // =====================================================
+    // ANALYZE
+    // =====================================================
 
     private void analyze() {
 
@@ -261,6 +334,7 @@ public class VisualizationTab extends JFrame {
                 );
 
         currentEvent = 0;
+
         iteration = 0;
 
         iterationLabel.setText(
@@ -275,27 +349,191 @@ public class VisualizationTab extends JFrame {
 
         boxesPanel.removeAll();
 
+        /*
+         * IMPORTANT:
+         *
+         * Do NOT create one box for every event.
+         *
+         * Instead, group all SOURCE events together,
+         * all VARIABLE events together, etc.
+         */
+        addGroupedBoxes();
+
         boxesPanel.revalidate();
+
         boxesPanel.repaint();
 
         eventArea.append(
-                "=== VISUALIZATION STARTED ===\n\n"
+                "Analysis started.\n"
         );
-
-        nextEvent();
     }
+
+    // =====================================================
+    // GROUP EVENTS INTO CATEGORY BOXES
+    // =====================================================
+
+    private void addGroupedBoxes() {
+
+        boxesPanel.removeAll();
+
+        StringBuilder source =
+                new StringBuilder();
+
+        StringBuilder variables =
+                new StringBuilder();
+
+        StringBuilder operators =
+                new StringBuilder();
+
+        StringBuilder loops =
+                new StringBuilder();
+
+        StringBuilder conditions =
+                new StringBuilder();
+
+        for (VisualizationEvent event : events) {
+
+            switch (event.getType()) {
+
+                case "SOURCE":
+
+                    appendLine(
+                            source,
+                            event.getValue()
+                    );
+
+                    break;
+
+                case "VARIABLE":
+
+                    appendLine(
+                            variables,
+                            event.getValue()
+                    );
+
+                    break;
+
+                case "OPERATOR":
+
+                    appendLine(
+                            operators,
+                            event.getValue()
+                    );
+
+                    break;
+
+                case "LOOP":
+
+                    appendLine(
+                            loops,
+                            event.getValue()
+                    );
+
+                    break;
+
+                case "CONDITION":
+
+                    appendLine(
+                            conditions,
+                            event.getValue()
+                    );
+
+                    break;
+
+                default:
+
+                    break;
+            }
+        }
+
+        // SOURCE BOX
+
+        if (source.length() > 0) {
+
+            addBox(
+                    "SOURCE",
+                    source.toString()
+            );
+        }
+
+        // VARIABLE BOX
+
+        if (variables.length() > 0) {
+
+            addBox(
+                    "VARIABLE",
+                    variables.toString()
+            );
+        }
+
+        // OPERATOR BOX
+
+        if (operators.length() > 0) {
+
+            addBox(
+                    "OPERATOR",
+                    operators.toString()
+            );
+        }
+
+        // LOOP BOX
+
+        if (loops.length() > 0) {
+
+            addBox(
+                    "LOOP",
+                    loops.toString()
+            );
+        }
+
+        // CONDITION BOX
+
+        if (conditions.length() > 0) {
+
+            addBox(
+                    "CONDITION",
+                    conditions.toString()
+            );
+        }
+
+        boxesPanel.revalidate();
+
+        boxesPanel.repaint();
+    }
+
+    // =====================================================
+    // APPEND LINE
+    // =====================================================
+
+    private void appendLine(
+            StringBuilder builder,
+            String value) {
+
+        if (builder.length() > 0) {
+
+            builder.append('\n');
+        }
+
+        builder.append(value);
+    }
+
+    // =====================================================
+    // NEXT EVENT
+    // =====================================================
 
     private void nextEvent() {
 
         if (events == null || events.isEmpty()) {
+
             analyze();
+
             return;
         }
 
         if (currentEvent >= events.size()) {
 
             eventArea.append(
-                    "\n=== END OF VISUALIZATION ===\n"
+                    "\n--- END OF VISUALIZATION ---\n"
             );
 
             return;
@@ -305,20 +543,17 @@ public class VisualizationTab extends JFrame {
                 events.get(currentEvent++);
 
         eventArea.append(
-                "Line " +
-                        event.getLineNumber() +
-                        " [" +
-                        event.getType() +
-                        "] " +
-                        event.getValue() +
-                        "\n"
-        );
-
-        addBox(
-                event.getType(),
-                event.getValue()
+                "["
+                        + event.getType()
+                        + "] "
+                        + event.getValue()
+                        + "\n"
         );
     }
+
+    // =====================================================
+    // LOOP ITERATION
+    // =====================================================
 
     private void nextIteration() {
 
@@ -328,36 +563,27 @@ public class VisualizationTab extends JFrame {
                 "Iteration: " + iteration
         );
 
-        String message =
-                "Loop iteration " +
-                        iteration;
-
         eventArea.append(
-                "\n" +
-                        message +
-                        "\n"
+                "\nLOOP ITERATION "
+                        + iteration
+                        + "\n"
         );
 
-        addBox(
-                "LOOP ITERATION",
-                "Iteration " +
-                        iteration
+        addIterationBox(
+                iteration
         );
     }
 
+    // =====================================================
+    // Z3 RESULT
+    // =====================================================
+
     private void showZ3Result(
             String result,
-            boolean unsat
-    ) {
+            boolean unsat) {
 
         resultLabel.setText(
                 "Z3 Result: " + result
-        );
-
-        eventArea.append(
-                "\nZ3 SOLVER RESULT: " +
-                        result +
-                        "\n"
         );
 
         addBox(
@@ -366,20 +592,35 @@ public class VisualizationTab extends JFrame {
                         : "SATISFIABLE",
                 result
         );
+
+        eventArea.append(
+                "\nZ3 SOLVER RESULT: "
+                        + result
+                        + "\n"
+        );
     }
+
+    // =====================================================
+    // ADD CATEGORY BOX
+    // =====================================================
 
     private void addBox(
             String type,
-            String value
-    ) {
+            String value) {
 
         JPanel box =
                 new JPanel(
-                        new BorderLayout()
+                        new BorderLayout(
+                                5,
+                                5
+                        )
                 );
 
         box.setPreferredSize(
-                new Dimension(205, 85)
+                new Dimension(
+                        220,
+                        130
+                )
         );
 
         box.setBorder(
@@ -403,20 +644,43 @@ public class VisualizationTab extends JFrame {
                 )
         );
 
-        JTextArea valueLabel =
-                new JTextArea(value);
+        JTextArea valueArea =
+                new JTextArea();
 
-        valueLabel.setEditable(false);
-        valueLabel.setLineWrap(true);
-        valueLabel.setWrapStyleWord(true);
-        valueLabel.setOpaque(false);
+        valueArea.setEditable(false);
 
-        valueLabel.setFont(
+        valueArea.setFocusable(false);
+
+        valueArea.setLineWrap(true);
+
+        valueArea.setWrapStyleWord(true);
+
+        valueArea.setFont(
                 new Font(
                         "Monospaced",
                         Font.PLAIN,
                         12
                 )
+        );
+
+        valueArea.setText(value);
+
+        valueArea.setBorder(
+                new EmptyBorder(
+                        5,
+                        5,
+                        5,
+                        5
+                )
+        );
+
+        JScrollPane valueScroll =
+                new JScrollPane(
+                        valueArea
+                );
+
+        valueScroll.setBorder(
+                BorderFactory.createEmptyBorder()
         );
 
         box.add(
@@ -425,15 +689,88 @@ public class VisualizationTab extends JFrame {
         );
 
         box.add(
-                valueLabel,
+                valueScroll,
+                BorderLayout.CENTER
+        );
+
+        boxesPanel.add(box);
+    }
+
+    // =====================================================
+    // LOOP ITERATION BOX
+    // =====================================================
+
+    private void addIterationBox(
+            int iterationNumber) {
+
+        JPanel box =
+                new JPanel(
+                        new BorderLayout()
+                );
+
+        box.setPreferredSize(
+                new Dimension(
+                        220,
+                        100
+                )
+        );
+
+        box.setBorder(
+                BorderFactory.createLineBorder(
+                        Color.DARK_GRAY,
+                        2
+                )
+        );
+
+        JLabel title =
+                new JLabel(
+                        "LOOP ITERATION",
+                        SwingConstants.CENTER
+                );
+
+        title.setFont(
+                new Font(
+                        "SansSerif",
+                        Font.BOLD,
+                        13
+                )
+        );
+
+        JLabel value =
+                new JLabel(
+                        "Iteration "
+                                + iterationNumber,
+                        SwingConstants.CENTER
+                );
+
+        value.setFont(
+                new Font(
+                        "Monospaced",
+                        Font.PLAIN,
+                        14
+                )
+        );
+
+        box.add(
+                title,
+                BorderLayout.NORTH
+        );
+
+        box.add(
+                value,
                 BorderLayout.CENTER
         );
 
         boxesPanel.add(box);
 
         boxesPanel.revalidate();
+
         boxesPanel.repaint();
     }
+
+    // =====================================================
+    // CLEAR
+    // =====================================================
 
     private void clearVisualization() {
 
@@ -442,10 +779,14 @@ public class VisualizationTab extends JFrame {
         boxesPanel.removeAll();
 
         boxesPanel.revalidate();
+
         boxesPanel.repaint();
 
         currentEvent = 0;
+
         iteration = 0;
+
+        events = null;
 
         iterationLabel.setText(
                 "Iteration: 0"
@@ -455,6 +796,10 @@ public class VisualizationTab extends JFrame {
                 "Z3 Result: Not evaluated"
         );
     }
+
+    // =====================================================
+    // CLOCK
+    // =====================================================
 
     private void startClock() {
 
@@ -470,17 +815,25 @@ public class VisualizationTab extends JFrame {
                         )
                 );
 
+        timer.setInitialDelay(0);
+
         timer.start();
     }
 
+    // =====================================================
+    // MAIN
+    // =====================================================
+
     public static void main(String[] args) {
 
-        SwingUtilities.invokeLater(() -> {
+        SwingUtilities.invokeLater(
+                () -> {
 
-            VisualizationTab window =
-                    new VisualizationTab();
+                    VisualizationTab window =
+                            new VisualizationTab();
 
-            window.setVisible(true);
-        });
+                    window.setVisible(true);
+                }
+        );
     }
 }

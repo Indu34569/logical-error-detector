@@ -1,3 +1,4 @@
+
 package com.project.visualization;
 
 import java.util.ArrayList;
@@ -13,104 +14,91 @@ public class VisualizationEngine {
 
         String[] lines = code.split("\\R");
 
-        for (int i = 0; i < lines.length; i++) {
+        for (String line : lines) {
 
-            String original = lines[i];
-            String line = original.trim();
+            String trimmed = line.trim();
 
-            if (line.isEmpty()) {
+            if (trimmed.isEmpty()) {
                 continue;
             }
 
-            int lineNumber = i + 1;
-
-            // SOURCE: only the actual source line
+            // SOURCE
             events.add(
                     new VisualizationEvent(
                             "SOURCE",
-                            original,
-                            lineNumber
+                            trimmed
                     )
             );
 
             // VARIABLE
-            Matcher variableMatcher = Pattern.compile(
-                    "(?:int|double|float|long|boolean|String)\\s+(\\w+)\\s*(?:=\\s*(.*))?;"
-            ).matcher(line);
-
-            if (variableMatcher.find()) {
-
-                String variable = variableMatcher.group(1);
-                String value = variableMatcher.group(2);
-
-                if (value == null) {
-                    value = "uninitialized";
-                }
+            if (trimmed.matches(
+                    ".*\\b(int|double|float|long|boolean|String|char)\\s+\\w+.*"
+            )) {
 
                 events.add(
                         new VisualizationEvent(
                                 "VARIABLE",
-                                variable + " = " + value,
-                                lineNumber
+                                trimmed
                         )
                 );
             }
 
-            // ASSIGNMENT / UPDATE
-            Matcher assignmentMatcher = Pattern.compile(
-                    "(\\w+)\\s*(\\+\\+|--|[+\\-*/]?=)\\s*(.*?);?$"
-            ).matcher(line);
-
-            if (assignmentMatcher.matches()
-                    && !line.startsWith("if")
-                    && !line.startsWith("while")
-                    && !line.startsWith("for")) {
-
-                String variable = assignmentMatcher.group(1);
-                String operator = assignmentMatcher.group(2);
-                String value = assignmentMatcher.group(3);
-
-                events.add(
-                        new VisualizationEvent(
-                                "OPERATOR",
-                                variable + " " + operator +
-                                        (value.isEmpty() ? "" : " " + value),
-                                lineNumber
-                        )
-                );
-            }
-
-            // CONDITIONS
-            if (line.startsWith("if")
-                    || line.startsWith("else if")
-                    || line.startsWith("while")
-                    || line.startsWith("for")) {
-
-                String condition = line;
-
-                events.add(
-                        new VisualizationEvent(
-                                "CONDITION",
-                                condition,
-                                lineNumber
-                        )
-                );
-            }
+            // OPERATOR
+            extractOperators(trimmed, events);
 
             // LOOP
-            if (line.startsWith("while")
-                    || line.startsWith("for")) {
+            if (trimmed.matches(
+                    ".*\\b(while|for|do)\\b.*"
+            )) {
 
                 events.add(
                         new VisualizationEvent(
                                 "LOOP",
-                                line,
-                                lineNumber
+                                trimmed
+                        )
+                );
+            }
+
+            // CONDITION
+            if (trimmed.matches(
+                    "\\s*(if|else\\s+if)\\s*\\(.*"
+            )) {
+
+                events.add(
+                        new VisualizationEvent(
+                                "CONDITION",
+                                trimmed
                         )
                 );
             }
         }
 
         return events;
+    }
+
+    private static void extractOperators(
+            String line,
+            List<VisualizationEvent> events) {
+
+        String operatorPattern =
+                "(\\+\\+|--|==|!=|<=|>=|&&|\\|\\||\\+=|-=|\\*=|/=|%=|[+\\-*/%<>=!])";
+
+        Pattern pattern = Pattern.compile(operatorPattern);
+
+        Matcher matcher = pattern.matcher(line);
+
+        while (matcher.find()) {
+
+            String operator = matcher.group();
+
+            // Avoid treating the declaration "=" as the only
+            // interesting operator when there is no actual operation.
+            events.add(
+                    new VisualizationEvent(
+                            "OPERATOR",
+                            operator
+                    )
+            );
+        }
     }
 }

@@ -6,6 +6,10 @@ public class VisualizationEvent {
     private final String value;
     private final int lineNumber;
 
+    public VisualizationEvent(String type, String value) {
+        this(type, value, -1);
+    }
+
     public VisualizationEvent(String type, String value, int lineNumber) {
         this.type = type;
         this.value = value;
