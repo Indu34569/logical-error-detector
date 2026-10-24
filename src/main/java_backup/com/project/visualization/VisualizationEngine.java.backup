@@ -1,0 +1,1005 @@
+package com.project.visualization;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class VisualizationEngine {
+
+    private static final int MAX_ITERATIONS = 1000;
+
+    private static final Map<String, Double> variables =
+            new LinkedHashMap<>();
+
+    public static List<VisualizationEvent> createEvents(String code) {
+
+        List<VisualizationEvent> events = new ArrayList<>();
+
+        variables.clear();
+
+        if (code == null || code.trim().isEmpty()) {
+            return events;
+        }
+
+        String[] lines = code.split("\\R", -1);
+
+        executeBlock(
+                lines,
+                0,
+                lines.length - 1,
+                events,
+                0
+        );
+
+        return events;
+    }
+
+    // =========================================================
+    // BLOCK EXECUTION
+    // =========================================================
+
+    private static void executeBlock(
+            String[] lines,
+            int start,
+            int end,
+            List<VisualizationEvent> events,
+            int depth) {
+
+        if (depth > 50) {
+            return;
+        }
+
+        int i = start;
+
+        while (i <= end) {
+
+            String line = lines[i].trim();
+
+            if (line.isEmpty()) {
+                i++;
+                continue;
+            }
+
+            // -------------------------------------------------
+            // FOR
+            // -------------------------------------------------
+
+            if (isFor(line)) {
+
+                int close = findClosingBrace(lines, i, end);
+
+                if (close >= 0) {
+
+                    executeFor(
+                            lines,
+                            i,
+                            close,
+                            line,
+                            events,
+                            depth
+                    );
+
+                    i = close + 1;
+                    continue;
+                }
+            }
+
+            // -------------------------------------------------
+            // WHILE
+            // -------------------------------------------------
+
+            if (isWhile(line)) {
+
+                int close = findClosingBrace(lines, i, end);
+
+                if (close >= 0) {
+
+                    executeWhile(
+                            lines,
+                            i,
+                            close,
+                            line,
+                            events,
+                            depth
+                    );
+
+                    i = close + 1;
+                    continue;
+                }
+            }
+
+            // -------------------------------------------------
+            // IF
+            // -------------------------------------------------
+
+            if (isIf(line)) {
+
+                int close = findClosingBrace(lines, i, end);
+
+                if (close >= 0) {
+
+                    boolean result =
+                            evaluateCondition(
+                                    getCondition(line)
+                            );
+
+                    add(
+                            events,
+                            "SOURCE",
+                            line,
+                            i + 1
+                    );
+
+                    add(
+                            events,
+                            "CONDITION",
+                            getCondition(line)
+                                    + " -> "
+                                    + result,
+                            i + 1
+                    );
+
+                    if (result) {
+
+                        executeBlock(
+                                lines,
+                                i + 1,
+                                close - 1,
+                                events,
+                                depth + 1
+                        );
+                    }
+
+                    i = close + 1;
+                    continue;
+                }
+            }
+
+            // -------------------------------------------------
+            // ELSE
+            // -------------------------------------------------
+
+            if (line.startsWith("else")) {
+
+                int close =
+                        findClosingBrace(
+                                lines,
+                                i,
+                                end
+                        );
+
+                if (close >= 0) {
+
+                    add(
+                            events,
+                            "SOURCE",
+                            line,
+                            i + 1
+                    );
+
+                    executeBlock(
+                            lines,
+                            i + 1,
+                            close - 1,
+                            events,
+                            depth + 1
+                    );
+
+                    i = close + 1;
+                    continue;
+                }
+            }
+
+            // -------------------------------------------------
+            // NORMAL LINE
+            // -------------------------------------------------
+
+            executeStatement(
+                    line,
+                    i + 1,
+                    events
+            );
+
+            i++;
+        }
+    }
+
+    // =========================================================
+    // WHILE
+    // =========================================================
+
+    private static void executeWhile(
+            String[] lines,
+            int loopLine,
+            int closeBrace,
+            String loopText,
+            List<VisualizationEvent> events,
+            int depth) {
+
+        String condition =
+                getCondition(loopText);
+
+        add(
+                events,
+                "SOURCE",
+                loopText,
+                loopLine + 1
+        );
+
+        add(
+                events,
+                "LOOP",
+                "while (" + condition + ")",
+                loopLine + 1
+        );
+
+        int iteration = 0;
+
+        while (
+                evaluateCondition(condition)
+                        && iteration < MAX_ITERATIONS
+        ) {
+
+            iteration++;
+
+            add(
+                    events,
+                    "LOOP",
+                    "LOOP ITERATION "
+                            + iteration,
+                    loopLine + 1
+            );
+
+            /*
+             * IMPORTANT:
+             *
+             * Execute ONLY the statements INSIDE this
+             * while loop.
+             *
+             * We do NOT execute loopLine again.
+             */
+            executeBlock(
+                    lines,
+                    loopLine + 1,
+                    closeBrace - 1,
+                    events,
+                    depth + 1
+            );
+        }
+
+        boolean finalCondition =
+                evaluateCondition(condition);
+
+        add(
+                events,
+                "CONDITION",
+                condition
+                        + " -> "
+                        + finalCondition,
+                loopLine + 1
+        );
+
+        add(
+                events,
+                "LOOP",
+                "LOOP STOPPED after "
+                        + iteration
+                        + " iteration(s)",
+                loopLine + 1
+        );
+    }
+
+    // =========================================================
+    // FOR
+    // =========================================================
+
+    private static void executeFor(
+            String[] lines,
+            int loopLine,
+            int closeBrace,
+            String loopText,
+            List<VisualizationEvent> events,
+            int depth) {
+
+        String inside =
+                getCondition(loopText);
+
+        String[] parts =
+                inside.split(";", -1);
+
+        if (parts.length != 3) {
+            return;
+        }
+
+        String initialization =
+                parts[0].trim();
+
+        String condition =
+                parts[1].trim();
+
+        String update =
+                parts[2].trim();
+
+        add(
+                events,
+                "SOURCE",
+                loopText,
+                loopLine + 1
+        );
+
+        add(
+                events,
+                "LOOP",
+                "for (" + inside + ")",
+                loopLine + 1
+        );
+
+        // Run initializer ONCE.
+        executeStatement(
+                initialization,
+                loopLine + 1,
+                events
+        );
+
+        int iteration = 0;
+
+        while (
+                evaluateCondition(condition)
+                        && iteration < MAX_ITERATIONS
+        ) {
+
+            iteration++;
+
+            add(
+                    events,
+                    "LOOP",
+                    "LOOP ITERATION "
+                            + iteration,
+                    loopLine + 1
+            );
+
+            // Execute body only.
+            executeBlock(
+                    lines,
+                    loopLine + 1,
+                    closeBrace - 1,
+                    events,
+                    depth + 1
+            );
+
+            // Run update ONCE.
+            executeStatement(
+                    update,
+                    loopLine + 1,
+                    events
+            );
+        }
+
+        boolean finalCondition =
+                evaluateCondition(condition);
+
+        add(
+                events,
+                "CONDITION",
+                condition
+                        + " -> "
+                        + finalCondition,
+                loopLine + 1
+        );
+
+        add(
+                events,
+                "LOOP",
+                "LOOP STOPPED after "
+                        + iteration
+                        + " iteration(s)",
+                loopLine + 1
+        );
+    }
+
+    // =========================================================
+    // STATEMENT
+    // =========================================================
+
+    private static void executeStatement(
+            String line,
+            int lineNumber,
+            List<VisualizationEvent> events) {
+
+        if (line == null) {
+            return;
+        }
+
+        line =
+                line.replace("{", "")
+                        .replace("}", "")
+                        .trim();
+
+        if (line.isEmpty()) {
+            return;
+        }
+
+        add(
+                events,
+                "SOURCE",
+                line,
+                lineNumber
+        );
+
+        processVariable(
+                line,
+                lineNumber,
+                events
+        );
+
+        extractOperators(
+                line,
+                lineNumber,
+                events
+        );
+    }
+
+    // =========================================================
+    // VARIABLE / ASSIGNMENT
+    // =========================================================
+
+    private static void processVariable(
+            String line,
+            int lineNumber,
+            List<VisualizationEvent> events) {
+
+        Matcher declaration =
+                Pattern.compile(
+                        "\\b(int|double|float|long|short|byte|"
+                                + "boolean|char|String)"
+                                + "\\s+([A-Za-z_$][\\w$]*)"
+                                + "(?:\\s*=\\s*([^;]+))?"
+                ).matcher(line);
+
+        if (declaration.find()) {
+
+            String name =
+                    declaration.group(2);
+
+            String value =
+                    declaration.group(3);
+
+            if (value != null) {
+
+                Double number =
+                        evaluateNumber(value);
+
+                if (number != null) {
+                    variables.put(name, number);
+                }
+
+            } else {
+
+                variables.put(
+                        name,
+                        0.0
+                );
+            }
+
+            add(
+                    events,
+                    "VARIABLE",
+                    name
+                            + " = "
+                            + format(
+                                    variables.get(name)
+                            ),
+                    lineNumber
+            );
+
+            return;
+        }
+
+        // x++
+        Matcher increment =
+                Pattern.compile(
+                        "^([A-Za-z_$][\\w$]*)\\s*(\\+\\+|--)"
+                ).matcher(line);
+
+        if (increment.find()) {
+
+            String name =
+                    increment.group(1);
+
+            String operator =
+                    increment.group(2);
+
+            double oldValue =
+                    variables.getOrDefault(
+                            name,
+                            0.0
+                    );
+
+            double newValue =
+                    operator.equals("++")
+                            ? oldValue + 1
+                            : oldValue - 1;
+
+            variables.put(
+                    name,
+                    newValue
+            );
+
+            add(
+                    events,
+                    "VARIABLE",
+                    name
+                            + ": "
+                            + format(oldValue)
+                            + " → "
+                            + format(newValue),
+                    lineNumber
+            );
+
+            return;
+        }
+
+        // x = ...
+        Matcher assignment =
+                Pattern.compile(
+                        "^([A-Za-z_$][\\w$]*)\\s*"
+                                + "(=|\\+=|-=|\\*=|/=|%=)"
+                                + "\\s*(.+?);?$"
+                ).matcher(line);
+
+        if (!assignment.find()) {
+            return;
+        }
+
+        String name =
+                assignment.group(1);
+
+        String operator =
+                assignment.group(2);
+
+        String expression =
+                assignment.group(3)
+                        .replace(";", "")
+                        .trim();
+
+        Double right =
+                evaluateNumber(expression);
+
+        if (right == null) {
+            return;
+        }
+
+        double oldValue =
+                variables.getOrDefault(
+                        name,
+                        0.0
+                );
+
+        double newValue;
+
+        switch (operator) {
+
+            case "=":
+                newValue = right;
+                break;
+
+            case "+=":
+                newValue =
+                        oldValue + right;
+                break;
+
+            case "-=":
+                newValue =
+                        oldValue - right;
+                break;
+
+            case "*=":
+                newValue =
+                        oldValue * right;
+                break;
+
+            case "/=":
+                if (right == 0) {
+                    return;
+                }
+                newValue =
+                        oldValue / right;
+                break;
+
+            case "%=":
+                if (right == 0) {
+                    return;
+                }
+                newValue =
+                        oldValue % right;
+                break;
+
+            default:
+                return;
+        }
+
+        variables.put(
+                name,
+                newValue
+        );
+
+        add(
+                events,
+                "VARIABLE",
+                name
+                        + ": "
+                        + format(oldValue)
+                        + " → "
+                        + format(newValue),
+                lineNumber
+        );
+    }
+
+    // =========================================================
+    // CONDITION
+    // =========================================================
+
+    private static boolean evaluateCondition(
+            String condition) {
+
+        if (condition == null) {
+            return false;
+        }
+
+        String c =
+                condition.trim();
+
+        // AND
+        if (c.contains("&&")) {
+
+            String[] parts =
+                    c.split("&&");
+
+            for (String part : parts) {
+
+                if (!evaluateCondition(part)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // OR
+        if (c.contains("||")) {
+
+            String[] parts =
+                    c.split("\\|\\|");
+
+            for (String part : parts) {
+
+                if (evaluateCondition(part)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Remove outer parentheses.
+        while (
+                c.startsWith("(")
+                        && c.endsWith(")")
+        ) {
+
+            c =
+                    c.substring(
+                            1,
+                            c.length() - 1
+                    ).trim();
+        }
+
+        Matcher matcher =
+                Pattern.compile(
+                        "^(.+?)\\s*"
+                                + "(==|!=|<=|>=|<|>)"
+                                + "\\s*(.+)$"
+                ).matcher(c);
+
+        if (!matcher.find()) {
+
+            Double value =
+                    evaluateNumber(c);
+
+            return value != null
+                    && value != 0;
+        }
+
+        Double left =
+                evaluateNumber(
+                        matcher.group(1)
+                );
+
+        Double right =
+                evaluateNumber(
+                        matcher.group(3)
+                );
+
+        if (left == null || right == null) {
+            return false;
+        }
+
+        String operator =
+                matcher.group(2);
+
+        switch (operator) {
+
+            case "==":
+                return Math.abs(
+                        left - right
+                ) < 0.000001;
+
+            case "!=":
+                return Math.abs(
+                        left - right
+                ) >= 0.000001;
+
+            case "<":
+                return left < right;
+
+            case ">":
+                return left > right;
+
+            case "<=":
+                return left <= right;
+
+            case ">=":
+                return left >= right;
+
+            default:
+                return false;
+        }
+    }
+
+    // =========================================================
+    // NUMBER EVALUATION
+    // =========================================================
+
+    private static Double evaluateNumber(
+            String expression) {
+
+        if (expression == null) {
+            return null;
+        }
+
+        String e =
+                expression
+                        .replace(";", "")
+                        .trim();
+
+        if (variables.containsKey(e)) {
+            return variables.get(e);
+        }
+
+        try {
+            return Double.parseDouble(e);
+        } catch (NumberFormatException ignored) {
+        }
+
+        // variable + number
+        Matcher arithmetic =
+                Pattern.compile(
+                        "^(.+?)\\s*"
+                                + "([+\\-*/%])"
+                                + "\\s*(.+)$"
+                ).matcher(e);
+
+        if (arithmetic.find()) {
+
+            Double left =
+                    evaluateNumber(
+                            arithmetic.group(1)
+                    );
+
+            Double right =
+                    evaluateNumber(
+                            arithmetic.group(3)
+                    );
+
+            if (left == null || right == null) {
+                return null;
+            }
+
+            switch (arithmetic.group(2)) {
+
+                case "+":
+                    return left + right;
+
+                case "-":
+                    return left - right;
+
+                case "*":
+                    return left * right;
+
+                case "/":
+                    return right == 0
+                            ? null
+                            : left / right;
+
+                case "%":
+                    return right == 0
+                            ? null
+                            : left % right;
+
+                default:
+                    return null;
+            }
+        }
+
+        return null;
+    }
+
+    // =========================================================
+    // LOOP DETECTION
+    // =========================================================
+
+    private static boolean isFor(
+            String line) {
+
+        return line.matches(
+                "^\\s*for\\s*\\(.*"
+        );
+    }
+
+    private static boolean isWhile(
+            String line) {
+
+        return line.matches(
+                "^\\s*while\\s*\\(.*"
+        );
+    }
+
+    private static boolean isIf(
+            String line) {
+
+        return line.matches(
+                "^\\s*(if|else\\s+if)\\s*\\(.*"
+        );
+    }
+
+    // =========================================================
+    // BRACE MATCHING
+    // =========================================================
+
+    private static int findClosingBrace(
+            String[] lines,
+            int start,
+            int end) {
+
+        int depth = 0;
+        boolean foundOpening = false;
+
+        for (
+                int i = start;
+                i <= end;
+                i++
+        ) {
+
+            String line = lines[i];
+
+            for (int j = 0;
+                 j < line.length();
+                 j++) {
+
+                char c =
+                        line.charAt(j);
+
+                if (c == '{') {
+
+                    depth++;
+                    foundOpening = true;
+
+                } else if (c == '}') {
+
+                    depth--;
+
+                    if (
+                            foundOpening
+                                    && depth == 0
+                    ) {
+                        return i;
+                    }
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    // =========================================================
+    // PARENTHESES
+    // =========================================================
+
+    private static String getCondition(
+            String line) {
+
+        int start =
+                line.indexOf('(');
+
+        int end =
+                line.lastIndexOf(')');
+
+        if (
+                start < 0
+                        || end <= start
+        ) {
+            return "";
+        }
+
+        return line.substring(
+                start + 1,
+                end
+        ).trim();
+    }
+
+    // =========================================================
+    // OPERATORS
+    // =========================================================
+
+    private static void extractOperators(
+            String line,
+            int lineNumber,
+            List<VisualizationEvent> events) {
+
+        Matcher matcher =
+                Pattern.compile(
+                        "(\\+\\+|--|==|!=|<=|>=|&&|\\|\\||"
+                                + "\\+=|-=|\\*=|/=|%=|"
+                                + "[+\\-*/%<>=!])"
+                ).matcher(line);
+
+        while (matcher.find()) {
+
+            add(
+                    events,
+                    "OPERATOR",
+                    matcher.group(),
+                    lineNumber
+            );
+        }
+    }
+
+    // =========================================================
+    // EVENT
+    // =========================================================
+
+    private static void add(
+            List<VisualizationEvent> events,
+            String type,
+            String value,
+            int line) {
+
+        events.add(
+                new VisualizationEvent(
+                        type,
+                        value,
+                        line
+                )
+        );
+    }
+
+    // =========================================================
+    // FORMAT
+    // =========================================================
+
+    private static String format(
+            double value) {
+
+        if (value == Math.rint(value)) {
+
+            return Long.toString(
+                    (long) value
+            );
+        }
+
+        return Double.toString(value);
+    }
+}

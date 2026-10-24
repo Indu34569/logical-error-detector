@@ -1243,8 +1243,600 @@ public class LogicalErrorDetector {
     }
 
     // =====================================================
-    // Z3 CONDITION CHECK
+    // Z3 RESULT FOR VISUALIZATION
     // =====================================================
+
+
+    
+public static String analyzeZ3ForVisualization(String source) {
+
+    try {
+        if (source == null || source.trim().isEmpty()) {
+            return "UNKNOWN";
+        }
+
+        java.util.Map<String, Integer> values =
+                new java.util.HashMap<>();
+
+        java.util.regex.Pattern assignment =
+                java.util.regex.Pattern.compile(
+                        "\\bint\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\s*=\\s*(-?\\d+)\\s*;"
+                );
+
+        java.util.regex.Matcher am =
+                assignment.matcher(source);
+
+        while (am.find()) {
+            values.put(
+                    am.group(1),
+                    Integer.parseInt(am.group(2))
+            );
+        }
+
+        java.util.List<String> results =
+                new java.util.ArrayList<>();
+
+        java.util.regex.Pattern conditionPattern =
+                java.util.regex.Pattern.compile(
+                        "\\b(if|while|for)\\s*\\(\\s*([^)]*)\\)"
+                );
+
+        java.util.regex.Matcher cm =
+                conditionPattern.matcher(source);
+
+        while (cm.find()) {
+
+            String condition =
+                    cm.group(2).trim();
+
+            java.util.regex.Matcher comparison =
+                    java.util.regex.Pattern.compile(
+                            "([A-Za-z_$][A-Za-z0-9_$]*|-?\\d+)\\s*" +
+                            "(<=|>=|==|!=|<|>)\\s*" +
+                            "([A-Za-z_$][A-Za-z0-9_$]*|-?\\d+)"
+                    ).matcher(condition);
+
+            if (!comparison.matches()) {
+                results.add(
+                        condition + " -> UNKNOWN"
+                );
+                continue;
+            }
+
+            String leftText = comparison.group(1);
+            String op = comparison.group(2);
+            String rightText = comparison.group(3);
+
+            Integer left = null;
+            Integer right = null;
+
+            if (leftText.matches("-?\\d+")) {
+                left = Integer.parseInt(leftText);
+            } else if (values.containsKey(leftText)) {
+                left = values.get(leftText);
+            }
+
+            if (rightText.matches("-?\\d+")) {
+                right = Integer.parseInt(rightText);
+            } else if (values.containsKey(rightText)) {
+                right = values.get(rightText);
+            }
+
+            if (left == null || right == null) {
+                results.add(
+                        condition + " -> UNKNOWN"
+                );
+                continue;
+            }
+
+            boolean possible;
+
+            switch (op) {
+                case "<":
+                    possible = left < right;
+                    break;
+                case "<=":
+                    possible = left <= right;
+                    break;
+                case ">":
+                    possible = left > right;
+                    break;
+                case ">=":
+                    possible = left >= right;
+                    break;
+                case "==":
+                    possible = left.equals(right);
+                    break;
+                case "!=":
+                    possible = !left.equals(right);
+                    break;
+                default:
+                    possible = false;
+            }
+
+            results.add(
+                    condition + " -> " +
+                    (possible ? "SATISFIABLE" : "UNSATISFIABLE")
+            );
+        }
+
+        if (results.isEmpty()) {
+            return "UNKNOWN";
+        }
+
+        boolean sat = false;
+        boolean unsat = false;
+
+        for (String r : results) {
+            if (r.endsWith("SATISFIABLE")) {
+                sat = true;
+            }
+            if (r.endsWith("UNSATISFIABLE")) {
+                unsat = true;
+            }
+        }
+
+        String overall;
+
+        if (sat && unsat) {
+            overall = "MIXED";
+        } else if (sat) {
+            overall = "SATISFIABLE";
+        } else if (unsat) {
+            overall = "UNSATISFIABLE";
+        } else {
+            overall = "UNKNOWN";
+        }
+
+        StringBuilder out =
+                new StringBuilder();
+
+        out.append(overall).append("\n");
+
+        for (String r : results) {
+            out.append(r).append("\n");
+        }
+
+        return out.toString().trim();
+
+    } catch (Exception ex) {
+
+        System.out.println(
+                "Z3 Visualization Error: "
+                        + ex.getMessage()
+        );
+
+        return "UNKNOWN";
+    }
+}
+
+
+    private static String checkConditionWithZ3(
+            Expression condition) {
+
+        try (Context context =
+                     new Context()) {
+
+            BoolExpr z3Condition =
+                    createZ3BooleanExpression(
+                            context,
+                            condition
+                    );
+
+            if (z3Condition == null) {
+                return "UNKNOWN";
+            }
+
+            Solver solver =
+                    context.mkSolver();
+
+            /*
+             * Can the condition be true?
+             */
+            solver.add(z3Condition);
+
+            Status trueStatus =
+                    solver.check();
+
+            /*
+             * Can the condition be false?
+             */
+            solver.reset();
+
+            solver.add(
+                    context.mkNot(z3Condition)
+            );
+
+            Status falseStatus =
+                    solver.check();
+
+            /*
+             * Impossible condition.
+             */
+            if (trueStatus ==
+                    Status.UNSATISFIABLE) {
+
+                return "UNSATISFIABLE";
+            }
+
+            /*
+             * Condition can be true and false.
+             */
+            if (trueStatus ==
+                        Status.SATISFIABLE
+                    && falseStatus ==
+                        Status.SATISFIABLE) {
+
+                return "SATISFIABLE";
+            }
+
+            /*
+             * Condition is mathematically always true.
+             */
+            if (trueStatus ==
+                        Status.SATISFIABLE
+                    && falseStatus ==
+                        Status.UNSATISFIABLE) {
+
+                return "ALWAYS TRUE";
+            }
+
+            return "UNKNOWN";
+
+        } catch (Exception e) {
+
+            return "UNKNOWN";
+        }
+    }
+
+    private static BoolExpr createZ3BooleanExpression(
+            Context context,
+            Expression expression) {
+
+        if (!(expression instanceof BinaryExpr)) {
+            return null;
+        }
+
+        BinaryExpr binary =
+                expression.asBinaryExpr();
+
+        IntExpr left =
+                createZ3IntegerForVisualization(
+                        context,
+                        binary.getLeft()
+                );
+
+        IntExpr right =
+                createZ3IntegerForVisualization(
+                        context,
+                        binary.getRight()
+                );
+
+        if (left == null || right == null) {
+            return null;
+        }
+
+        switch (binary.getOperator()) {
+
+            case GREATER:
+                return context.mkGt(left, right);
+
+            case GREATER_EQUALS:
+                return context.mkGe(left, right);
+
+            case LESS:
+                return context.mkLt(left, right);
+
+            case LESS_EQUALS:
+                return context.mkLe(left, right);
+
+            case EQUALS:
+                return context.mkEq(left, right);
+
+            case NOT_EQUALS:
+                return context.mkNot(
+                        context.mkEq(left, right)
+                );
+
+            default:
+                return null;
+        }
+    }
+
+    private static IntExpr createZ3IntegerForVisualization(
+            Context context,
+            Expression expression) {
+
+        if (expression instanceof IntegerLiteralExpr) {
+
+            try {
+
+                return context.mkInt(
+                        Integer.parseInt(
+                                expression
+                                        .asIntegerLiteralExpr()
+                                        .getValue()
+                        )
+                );
+
+            } catch (Exception e) {
+
+                return null;
+            }
+        }
+
+        if (expression instanceof NameExpr) {
+
+            String name =
+                    expression
+                            .asNameExpr()
+                            .getNameAsString();
+
+            /*
+             * IMPORTANT:
+             * Do not substitute Java variable values here.
+             * A variable such as count is an unconstrained
+             * mathematical integer for this Z3 check.
+             */
+            return context.mkIntConst(name);
+        }
+
+        return null;
+    }
+
+
+    private static String checkZ3ConditionForVisualization(
+            Context context,
+            String condition) {
+
+        Matcher matcher =
+                Pattern.compile(
+                        "([A-Za-z_$][A-Za-z0-9_$]*|-?\\d+)\\s*"
+                                + "(<=|>=|==|!=|<|>)\\s*"
+                                + "([A-Za-z_$][A-Za-z0-9_$]*|-?\\d+)"
+                ).matcher(condition.trim());
+
+        if (!matcher.matches()) {
+            return "NO Z3 RESULT";
+        }
+
+        String leftText = matcher.group(1);
+        String operator = matcher.group(2);
+        String rightText = matcher.group(3);
+
+        IntExpr left;
+        IntExpr right;
+
+        if (leftText.matches("-?\\d+")) {
+            left = context.mkInt(
+                    Integer.parseInt(leftText)
+            );
+        } else if (variables.containsKey(leftText)) {
+            left = context.mkInt(
+                    variables.get(leftText)
+            );
+        } else {
+            left = context.mkIntConst(leftText);
+        }
+
+        if (rightText.matches("-?\\d+")) {
+            right = context.mkInt(
+                    Integer.parseInt(rightText)
+            );
+        } else if (variables.containsKey(rightText)) {
+            right = context.mkInt(
+                    variables.get(rightText)
+            );
+        } else {
+            right = context.mkIntConst(rightText);
+        }
+
+        BoolExpr expression;
+
+        switch (operator) {
+
+            case "<":
+                expression = context.mkLt(left, right);
+                break;
+
+            case "<=":
+                expression = context.mkLe(left, right);
+                break;
+
+            case ">":
+                expression = context.mkGt(left, right);
+                break;
+
+            case ">=":
+                expression = context.mkGe(left, right);
+                break;
+
+            case "==":
+                expression = context.mkEq(left, right);
+                break;
+
+            case "!=":
+                expression =
+                        context.mkNot(
+                                context.mkEq(left, right)
+                        );
+                break;
+
+            default:
+                return "NO Z3 RESULT";
+        }
+
+        Solver solver = context.mkSolver();
+
+        solver.add(expression);
+
+        Status status = solver.check();
+
+        if (status == Status.SATISFIABLE) {
+            return "SATISFIABLE";
+        }
+
+        if (status == Status.UNSATISFIABLE) {
+            return "UNSATISFIABLE";
+        }
+
+        return "UNKNOWN";
+    }
+
+
+
+    public static String checkZ3ConditionForVisualization(
+            String conditionText) {
+
+        try {
+            Expression expression =
+                    StaticJavaParser.parseExpression(conditionText);
+
+            if (!(expression instanceof BinaryExpr)) {
+                return "NO Z3 RESULT";
+            }
+
+            return checkConcreteZ3(expression);
+
+        } catch (Exception e) {
+            return "NO Z3 RESULT";
+        }
+    }
+
+    private static String checkConcreteZ3(Expression condition) {
+
+        if (!(condition instanceof BinaryExpr)) {
+            return "NO Z3 RESULT";
+        }
+
+        BinaryExpr b = condition.asBinaryExpr();
+
+        Integer left = evaluateIntegerExpression(b.getLeft().toString());
+        Integer right = evaluateIntegerExpression(b.getRight().toString());
+
+        // If both sides are known from the program state,
+        // evaluate the actual condition.
+        if (left != null && right != null) {
+
+            boolean value;
+
+            switch (b.getOperator()) {
+                case GREATER:
+                    value = left > right;
+                    break;
+                case GREATER_EQUALS:
+                    value = left >= right;
+                    break;
+                case LESS:
+                    value = left < right;
+                    break;
+                case LESS_EQUALS:
+                    value = left <= right;
+                    break;
+                case EQUALS:
+                    value = left.equals(right);
+                    break;
+                case NOT_EQUALS:
+                    value = !left.equals(right);
+                    break;
+                default:
+                    return "NO Z3 RESULT";
+            }
+
+            return value ? "ALWAYS TRUE" : "UNSATISFIABLE";
+        }
+
+        // Otherwise use symbolic Z3.
+        try (Context ctx = new Context()) {
+
+            BoolExpr expr =
+                    createZ3Condition(ctx, b);
+
+            if (expr == null) {
+                return "NO Z3 RESULT";
+            }
+
+            Solver solver = ctx.mkSolver();
+            solver.add(expr);
+
+            Status status = solver.check();
+
+            if (status == Status.SATISFIABLE) {
+                return "SATISFIABLE";
+            }
+
+            if (status == Status.UNSATISFIABLE) {
+                return "UNSATISFIABLE";
+            }
+
+            return "NO Z3 RESULT";
+
+        } catch (Exception e) {
+            return "NO Z3 RESULT";
+        }
+    }
+
+    private static String checkSingleZ3Condition(
+            Expression condition) {
+
+        if (!(condition instanceof BinaryExpr)) {
+            return "NO Z3 RESULT";
+        }
+
+        try (Context context = new Context()) {
+
+            BoolExpr z3Condition =
+                    createZ3Condition(
+                            context,
+                            condition.asBinaryExpr()
+                    );
+
+            if (z3Condition == null) {
+                return "NO Z3 RESULT";
+            }
+
+            Solver solver =
+                    context.mkSolver();
+
+            solver.add(z3Condition);
+
+            Status conditionStatus =
+                    solver.check();
+
+            solver.reset();
+
+            solver.add(
+                    context.mkNot(z3Condition)
+            );
+
+            Status oppositeStatus =
+                    solver.check();
+
+            if (conditionStatus ==
+                    Status.UNSATISFIABLE) {
+
+                return "UNSATISFIABLE";
+            }
+
+            if (oppositeStatus ==
+                    Status.UNSATISFIABLE) {
+
+                return "ALWAYS TRUE";
+            }
+
+            if (conditionStatus ==
+                    Status.SATISFIABLE) {
+
+                return "SATISFIABLE";
+            }
+
+            return "NO Z3 RESULT";
+
+        } catch (Exception e) {
+
+            return "NO Z3 RESULT";
+        }
+    }
 
     private static int analyzeZ3Condition(
             Expression condition,
@@ -1413,8 +2005,7 @@ public class LogicalErrorDetector {
                             .asNameExpr()
                             .getNameAsString();
 
-            Integer knownValue =
-                    variables.get(name);
+            Integer knownValue = variables.get(name);
 
             if (knownValue != null) {
                 return context.mkInt(knownValue);
