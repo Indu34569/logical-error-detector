@@ -2019,3 +2019,114 @@ function evaluateAstCondition(condition, variables) {
 
     return results;
 }
+
+/* =========================================================
+   WEB Z3 SOLVER TAB
+   ========================================================= */
+
+function runWebZ3Analysis() {
+    const input = document.getElementById("z3Input");
+    const overall = document.getElementById("z3Overall");
+    const results = document.getElementById("z3Results");
+
+    if (!input || !overall || !results) return;
+
+    const code = input.value;
+    results.innerHTML = "";
+
+    const variables = {};
+
+    // Read simple integer assignments.
+    const assignments = [
+        ...code.matchAll(/\bint\s+([A-Za-z_$][\w$]*)\s*=\s*(-?\d+)\s*;/g)
+    ];
+
+    assignments.forEach(m => {
+        variables[m[1]] = Number(m[2]);
+    });
+
+    const lines = code.split(/\r?\n/);
+    const found = [];
+
+    lines.forEach((line, index) => {
+        const m = line.match(
+            /\b(if|while)\s*\(\s*([A-Za-z_$][\w$]*)\s*(>=|<=|==|!=|>|<)\s*(-?\d+)\s*\)/
+        );
+
+        if (!m) return;
+
+        const variable = m[2];
+        const operator = m[3];
+        const right = Number(m[4]);
+
+        if (!(variable in variables)) return;
+
+        const left = variables[variable];
+        let value;
+
+        switch (operator) {
+            case ">":  value = left > right; break;
+            case "<":  value = left < right; break;
+            case ">=": value = left >= right; break;
+            case "<=": value = left <= right; break;
+            case "==": value = left === right; break;
+            case "!=": value = left !== right; break;
+        }
+
+        found.push({
+            line: index + 1,
+            expression: `${variable} ${operator} ${right}`,
+            value
+        });
+    });
+
+    if (!found.length) {
+        overall.textContent = "UNKNOWN — no analyzable conditions found";
+        overall.className = "z3-overall unknown";
+        return;
+    }
+
+    const sat = found.filter(x => x.value);
+    const unsat = found.filter(x => !x.value);
+
+    if (sat.length && unsat.length) {
+        overall.textContent = "MIXED";
+        overall.className = "z3-overall mixed";
+    } else if (sat.length) {
+        overall.textContent = "SATISFIABLE";
+        overall.className = "z3-overall sat";
+    } else {
+        overall.textContent = "UNSATISFIABLE";
+        overall.className = "z3-overall unsat";
+    }
+
+    found.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "z3-result-card " + (item.value ? "sat" : "unsat");
+
+        div.innerHTML = `
+            <strong>Line ${item.line}</strong>
+            <span>${escapeHtml(item.expression)}</span>
+            <b>${item.value ? "SATISFIABLE" : "UNSATISFIABLE"}</b>
+        `;
+
+        results.appendChild(div);
+    });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const tab = document.getElementById("z3TabButton");
+    const panel = document.getElementById("z3SolverTab");
+    const run = document.getElementById("z3RunButton");
+
+    if (tab && panel) {
+        tab.addEventListener("click", () => {
+            panel.style.display =
+                panel.style.display === "none" ? "block" : "none";
+        });
+    }
+
+    if (run) {
+        run.addEventListener("click", runWebZ3Analysis);
+    }
+});

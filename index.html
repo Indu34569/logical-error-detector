@@ -9,6 +9,11 @@
   </head>
 
   <body>
+
+<button id="z3TabButton" class="z3-tab-button" type="button">
+  🧠 Z3 Solver
+</button>
+
     <header class="topbar">
       <div class="brand">
         <div class="brand-icon">⌘</div>
@@ -533,5 +538,30 @@
     </footer>
 
     <script src="app.js"></script>
-  </body>
+  
+<!-- Z3 SOLVER TAB -->
+<section id="z3SolverTab" class="z3-solver-panel" style="display:none;">
+  <div class="z3-header">
+    <h2>🧠 Z3 Solver</h2>
+    <p>Check each logical condition independently.</p>
+  </div>
+
+  <textarea id="z3Input" class="z3-input" rows="12">int age = 10;
+int count = 0;
+
+while (count < 3) {
+    count++;
+}
+
+if (age > 20) {
+    System.out.println(age);
+}</textarea>
+
+  <button id="z3RunButton" class="z3-run-button">Run Z3 Analysis</button>
+
+  <div id="z3Overall" class="z3-overall">Waiting for analysis...</div>
+  <div id="z3Results" class="z3-results"></div>
+</section>
+
+</body>
 </html>

@@ -1631,3 +1631,87 @@ footer {
   opacity: 1 !important;
   text-shadow: none !important;
 }
+
+
+/* Z3 Solver Tab */
+.z3-tab-button {
+    margin: 12px;
+    padding: 10px 18px;
+    border: 1px solid #8b6fc4;
+    border-radius: 8px;
+    background: #eee7ff;
+    color: #39265f;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.z3-solver-panel {
+    margin: 20px;
+    padding: 24px;
+    border-radius: 14px;
+    border: 1px solid #d8ccef;
+    background: #faf8ff;
+}
+
+.z3-input {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 15px 0;
+    padding: 14px;
+    font-family: monospace;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+}
+
+.z3-run-button {
+    padding: 11px 20px;
+    border: 0;
+    border-radius: 8px;
+    background: #6c4bb6;
+    color: white;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.z3-overall {
+    margin: 18px 0;
+    padding: 14px;
+    border-radius: 8px;
+    font-size: 20px;
+    font-weight: 800;
+}
+
+.z3-overall.sat,
+.z3-result-card.sat {
+    background: #e5f7e9;
+    color: #176b2c;
+}
+
+.z3-overall.unsat,
+.z3-result-card.unsat {
+    background: #ffe7e7;
+    color: #9b1c1c;
+}
+
+.z3-overall.mixed {
+    background: #fff2cc;
+    color: #7a5600;
+}
+
+.z3-overall.unknown {
+    background: #eeeeee;
+    color: #555;
+}
+
+.z3-results {
+    display: grid;
+    gap: 10px;
+}
+
+.z3-result-card {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    gap: 15px;
+    padding: 14px;
+    border-radius: 8px;
+}
